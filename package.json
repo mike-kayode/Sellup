@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:phase1": "node scripts/apply-businesses-migration.cjs",
+    "db:storefront": "node scripts/apply-storefront-v1.cjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:check": "node scripts/check-db.cjs",

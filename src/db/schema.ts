@@ -1020,3 +1020,89 @@ export const webhooksRelations = relations(webhooks, ({ one }) => ({
     references: [businesses.id],
   }),
 }));
+
+// ---------------------------------------------------------------------------
+// Storefront template system (storefront-v1)
+// ---------------------------------------------------------------------------
+// One shared mobile storefront template that every merchant uses. Merchants
+// edit content and brand color only — never the layout. A merchant's choices
+// live in a JSON config: a `draft` (what the setup wizard edits) and a
+// `published` copy (what the live storefront renders). The last 10 published
+// versions are kept for one-tap rollback.
+
+// Registry of available storefront templates. Version 1 is "storefront-v1".
+export const storeTemplates = pgTable(
+  "store_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    templateId: varchar("template_id", { length: 50 }).notNull().unique(),
+    version: integer("version").default(1).notNull(),
+    status: varchar("status", { length: 20 }).default("active").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("store_templates_template_id_unique").on(table.templateId),
+    index("store_templates_status_idx").on(table.status),
+  ]
+);
+
+// One row per (business, scope). Scope is "draft" or "published".
+export const storeConfigs = pgTable(
+  "store_configs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    scope: varchar("scope", { length: 10 }).default("draft").notNull(),
+    templateId: varchar("template_id", { length: 50 }).default("storefront-v1").notNull(),
+    config: jsonb("config").notNull(),
+    publishedAt: timestamp("published_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("store_configs_store_scope_unique").on(table.storeId, table.scope),
+    index("store_configs_store_id_idx").on(table.storeId),
+    index("store_configs_scope_idx").on(table.scope),
+  ]
+);
+
+// Rollback history: the last 10 published configs per business.
+export const storeConfigRevisions = pgTable(
+  "store_config_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    templateId: varchar("template_id", { length: 50 }).default("storefront-v1").notNull(),
+    config: jsonb("config").notNull(),
+    version: integer("version").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("store_config_revisions_store_id_idx").on(table.storeId),
+    unique("store_configs_revisions_store_version_unique").on(table.storeId, table.version),
+  ]
+);
+
+// Short-lived private preview links ("/preview/{token}"), 24h expiry.
+export const storePreviewTokens = pgTable(
+  "store_preview_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    token: varchar("token", { length: 64 }).notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("store_preview_tokens_token_unique").on(table.token),
+    index("store_preview_tokens_store_id_idx").on(table.storeId),
+    index("store_preview_tokens_expires_at_idx").on(table.expiresAt),
+  ]
+);

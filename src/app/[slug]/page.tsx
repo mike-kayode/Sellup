@@ -7,6 +7,10 @@ import { ShoppingCart, MapPin, Phone } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/whatsapp";
 import { canUseFeature, normalizePlan } from "@/lib/entitlements";
 import { ShowcaseTemplate } from "@/components/store-templates/showcase";
+import { StorefrontV1 } from "@/components/store-templates/storefront-v1";
+import { resolveConfig } from "@/lib/storefront/config";
+import { deriveThemeTokens } from "@/lib/storefront/theme";
+import { getPublishedConfig, isStorefrontV1Enabled } from "@/lib/storefront/store";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -86,6 +90,37 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
         store={store}
         categories={categoriesData}
         products={productsData}
+      />
+    );
+  }
+
+  // Storefront v1 — the shared mobile-first template (free plan). Rendered
+  // when the storefront_v1 flag is on (default). Uses the merchant's
+  // published config when present; otherwise seeded defaults from the store
+  // row, so every store gets the new design with zero setup.
+  const storefrontV1On = await isStorefrontV1Enabled();
+  if (storefrontV1On) {
+    const rawConfig = await getPublishedConfig(store.id);
+    const config = resolveConfig(rawConfig, {
+      storeName: store.storeName,
+      storeSlug: store.storeSlug,
+      logo: store.logo,
+      bannerImage: store.bannerImage,
+      description: store.description,
+      primaryColor: store.primaryColor,
+      whatsappNumber: store.whatsappNumber,
+      vertical: null,
+      categories: categoriesData.map((c) => ({ id: c.id, name: c.name })),
+    });
+    const derived = deriveThemeTokens(config.brand.color);
+    const theme = derived.valid ? derived : deriveThemeTokens(null);
+    return (
+      <StorefrontV1
+        store={store}
+        products={productsData}
+        categories={categoriesData}
+        config={config}
+        theme={theme}
       />
     );
   }

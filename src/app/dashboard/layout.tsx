@@ -20,6 +20,7 @@ import {
   FileText,
   Globe,
   Palette,
+  Paintbrush,
   Search,
   CreditCard,
   Plug,
@@ -155,6 +156,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const allMenuItems = [
     { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
     { label: "My Store", icon: Store, href: "/dashboard/store" },
+  { label: "Store design", icon: Paintbrush, href: "/dashboard/store-design" },
     { label: "Products", icon: Package, href: "/dashboard/products" },
     { label: "Categories", icon: Tag, href: "/dashboard/categories" },
     { label: "Inventory", icon: Warehouse, href: "/dashboard/inventory" },

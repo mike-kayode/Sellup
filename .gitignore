@@ -11,3 +11,11 @@ $log
 supabase-data.json
 supabase-data.sql
 env.remote-merge
+
+# Local ops/deploy artifacts — never commit (contain host paths/keys)
+_*
+dbmigrate/
+supervise.sh
+sellup-cron
+sshretry3.ps1
+dump-supabase.cjs
