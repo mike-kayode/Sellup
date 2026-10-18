@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+.env
+.env.*
+!.env.example
+*.log
+$log
+*.tar.gz
+*.tsbuildinfo
+supabase-data.json
+supabase-data.sql
+env.remote-merge
