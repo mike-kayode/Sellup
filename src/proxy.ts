@@ -144,10 +144,11 @@ export default function proxy(request: NextRequest) {
     // Map the clean subdomain path under the slug:
     //   /         -> /{slug}
     //   /checkout -> /{slug}/checkout
+    // Next.js 16 requires absolute URLs for rewrites.
     if (path === "/") {
-      return NextResponse.rewrite(`/${storeSub}${search}`);
+      return NextResponse.rewrite(`${scheme}//${hostFor(null)}/${storeSub}${search}`);
     }
-    return NextResponse.rewrite(`/${storeSub}${path}${search}`);
+    return NextResponse.rewrite(`${scheme}//${hostFor(null)}/${storeSub}${path}${search}`);
   }
 
   // Landing paths - the marketing site lives on try.<base>.
