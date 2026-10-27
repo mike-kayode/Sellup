@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { stores } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { validateImageFile, verifyImageSignature } from "@/lib/supabase/storage";
 import { requireAuthenticatedUser } from "@/lib/auth-middleware";
+import { uploadToCpanel, getPublicUrl } from "@/lib/cpanel-storage";
 
-const IMAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || "store-images";
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const STORAGE_QUOTA_BYTES = 8 * 1024 * 1024;
 const UPLOAD_FOLDERS = ["products", "logos", "banners"] as const;
@@ -30,7 +29,7 @@ export async function POST(request: NextRequest) {
     if (!file || !storeId) {
       return NextResponse.json(
         { error: "File and storeId are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -52,7 +51,7 @@ export async function POST(request: NextRequest) {
     if (!validation.valid) {
       return NextResponse.json(
         { error: validation.error },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -61,60 +60,38 @@ export async function POST(request: NextRequest) {
     }
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const path = `${storeId}/${folder}/${Date.now()}-${safeName}`;
+    const relativePath = `${storeId}/${folder}/${Date.now()}-${safeName}`;
 
-    const adminSupabase = getSupabaseAdmin();
-    let currentStorageBytes = 0;
-    for (const uploadFolder of UPLOAD_FOLDERS) {
-      const { data: storedFiles, error: listError } = await adminSupabase.storage
-        .from(IMAGE_BUCKET)
-        .list(`${storeId}/${uploadFolder}`, { limit: 1000 });
-      if (listError) {
-        console.error("Storage quota check error:", listError);
-        return NextResponse.json({ error: "Unable to verify storage quota" }, { status: 503 });
-      }
-      currentStorageBytes += (storedFiles || []).reduce(
-        (total, storedFile) => total + Number(storedFile.metadata?.size || 0),
-        0
-      );
-    }
+    // Convert file to buffer for cPanel upload
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    if (currentStorageBytes + file.size > STORAGE_QUOTA_BYTES) {
-      return NextResponse.json({ error: "Store storage quota exceeded (8MB maximum)" }, { status: 413 });
-    }
-
-    const { data, error: uploadError } = await adminSupabase.storage
-      .from(IMAGE_BUCKET)
-      .upload(path, file, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: file.type,
-      });
-
-    if (uploadError || !data) {
-      console.error("Upload error:", uploadError);
+    // Upload to cPanel filesystem storage
+    let uploadResult;
+    try {
+      uploadResult = await uploadToCpanel(file.name, buffer, file.type, folder);
+    } catch (cpanelErr) {
+      console.error("cPanel upload failed:", cpanelErr);
       return NextResponse.json(
-        { error: "Failed to upload image" },
-        { status: 500 }
+        { error: "Image storage unavailable. Please try again later." },
+        { status: 503 },
       );
     }
-
-    const { data: publicData } = adminSupabase.storage
-      .from(IMAGE_BUCKET)
-      .getPublicUrl(data.path);
 
     return NextResponse.json(
       {
-        url: publicData.publicUrl,
-        path: data.path,
+        url: uploadResult.publicUrl,
+        path: uploadResult.filePath,
+        contentType: uploadResult.mimeType,
+        size: uploadResult.size,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Upload route error:", error);
     return NextResponse.json(
       { error: "Failed to upload image" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -122,6 +99,6 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json(
     { error: "Method not allowed" },
-    { status: 405 }
+    { status: 405 },
   );
 }

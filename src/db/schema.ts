@@ -57,6 +57,29 @@ export const emailVerifications = pgTable(
   (table) => [unique("email_verifications_email_unique").on(table.email)]
 );
 
+// WhatsApp verification codes (6-digit, phone-only — alternative to email verification).
+// One active row per phone number per store.
+export const whatsappVerifications = pgTable(
+  "whatsapp_verifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    phone: varchar("phone", { length: 20 }).notNull(),
+    codeHash: varchar("code_hash", { length: 64 }).notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("whatsapp_verifications_store_phone_unique").on(table.storeId, table.phone),
+    index("whatsapp_verifications_store_id_idx").on(table.storeId),
+    index("whatsapp_verifications_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
 // Internal platform access is separate from merchant/store roles.
 export const adminMemberships = pgTable(
   "admin_memberships",
@@ -218,7 +241,11 @@ export const customers = pgTable(
       .references(() => businesses.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }).notNull(),
     phone: varchar("phone", { length: 20 }).notNull(),
+    whatsapp: varchar("whatsapp", { length: 20 }).notNull().default(""),
     email: varchar("email", { length: 255 }),
+    passwordHash: varchar("password_hash", { length: 255 }).default("").notNull(),
+    isEmailVerified: boolean("is_email_verified").default(false).notNull(),
+    isWhatsAppVerified: boolean("is_whatsapp_verified").default(false).notNull(),
     deliveryAddress: text("delivery_address"),
     city: varchar("city", { length: 100 }),
     state: varchar("state", { length: 100 }),
@@ -238,6 +265,7 @@ export const customers = pgTable(
     }),
     index("customers_store_id_idx").on(table.storeId),
     unique("customers_store_id_phone_unique").on(table.storeId, table.phone),
+    unique("customers_store_id_whatsapp_unique").on(table.storeId, table.whatsapp),
   ]
 );
 
@@ -1104,5 +1132,35 @@ export const storePreviewTokens = pgTable(
     unique("store_preview_tokens_token_unique").on(table.token),
     index("store_preview_tokens_store_id_idx").on(table.storeId),
     index("store_preview_tokens_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
+// Image metadata records for cPanel-hosted files.
+// Supabase/PostgreSQL stores the metadata; the actual image files live on
+// the cPanel server filesystem under CPANEL_UPLOAD_DIRECTORY.
+export const images = pgTable(
+  "images",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    originalName: varchar("original_name", { length: 255 }),
+    filePath: varchar("file_path", { length: 500 }).notNull(), // relative path on cPanel
+    publicUrl: varchar("public_url", { length: 500 }).notNull(), // HTTPS URL
+    mimeType: varchar("mime_type", { length: 100 }).notNull(),
+    fileSize: integer("file_size").notNull(), // bytes
+    width: integer("width"),
+    height: integer("height"),
+    resourceType: varchar("resource_type", { length: 50 }), // "product" | "store" | "banner" | "logo"
+    resourceId: uuid("resource_id"), // references products.id or businesses.id
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("images_owner_id_idx").on(table.ownerId),
+    index("images_resource_idx").on(table.resourceType, table.resourceId),
+    index("images_file_path_idx").on(table.filePath),
   ]
 );

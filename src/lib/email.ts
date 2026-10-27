@@ -95,6 +95,7 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
 
 /**
  * Build email content based on template
+ * Polished, responsive templates with light/dark mode support
  */
 function buildEmailContent(
   template: EmailTemplate,
@@ -102,40 +103,179 @@ function buildEmailContent(
 ): string {
   const brandColor = "#25D366";
 
-  const baseTemplate = `
-    <html>
+  const baseTemplate = (body: string) => `<!DOCTYPE html>
+    <html lang="en">
       <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="color-scheme" content="light dark" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <title>Sell Up</title>
         <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background-color: ${brandColor}; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { background-color: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px; }
-          .button { display: inline-block; background-color: ${brandColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 20px; }
-          .footer { text-align: center; color: #666; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
+          @media (prefers-color-scheme: dark) {
+            .bg-dark { background-color: #0f172a; }
+            .text-dark { color: #e2e8f0; }
+            .muted-dark { color: #94a3b8; }
+            .border-dark { border-color: #334155; }
+            .card-dark { background-color: #1e293b; }
+            .btn-dark { background-color: #25D366; color: white; }
+            .body-dark { background-color: #0f172a; color: #e2e8f0; }
+          }
+          @media (prefers-color-scheme: light) {
+            .bg-light { background-color: #ffffff; }
+            .text-light { color: #333333; }
+            .muted-light { color: #64748b; }
+            .border-light { border-color: #e2e8f0; }
+            .card-light { background-color: #f8fafc; }
+            .btn-light { background-color: #25D366; color: white; }
+            .body-light { background-color: #ffffff; color: #333333; }
+          }
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            background-color: #ffffff;
+            color: #333333;
+          }
+          .container {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 0;
+            width: 100%;
+          }
+          .header {
+            background-color: #25D366;
+            color: white;
+            text-align: center;
+            padding: 32px 24px;
+            border-radius: 12px 12px 0 0;
+          }
+          .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+          }
+          .header p {
+            margin: 8px 0 0;
+            font-size: 16px;
+            opacity: 0.9;
+          }
+          .content {
+            background-color: #f8fafc;
+            padding: 32px 24px;
+            border-radius: 0 0 12px 12px;
+          }
+          .card {
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+          }
+          .card h2 {
+            margin: 0 0 16px;
+            font-size: 20px;
+            font-weight: 600;
+            color: #333333;
+          }
+          .order-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 12px 0;
+            border-bottom: 1px solid #f1f5f9;
+          }
+          .order-row:last-child {
+            border-bottom: none;
+          }
+          .order-item-name {
+            font-weight: 500;
+            color: #333333;
+          }
+          .order-item-qty {
+            color: #64748b;
+            font-size: 14px;
+          }
+          .order-item-price {
+            font-weight: 600;
+            color: #333333;
+          }
+          .totals {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 2px solid #e2e8f0;
+          }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: #64748b;
+            margin: 8px 0;
+          }
+          .total-row.bold {
+            font-weight: 700;
+            color: #333333;
+            font-size: 18px;
+            margin-top: 16px;
+          }
+          .highlight {
+            color: #25D366;
+            font-weight: 600;
+          }
+          .btn {
+            display: inline-block;
+            background-color: #25D366;
+            color: white;
+            text-decoration: none;
+            padding: 14px 32px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-align: center;
+            margin: 24px 0;
+          }
+          .footer {
+            padding: 24px;
+            text-align: center;
+            font-size: 14px;
+            color: #64748b;
+            border-top: 1px solid #e2e8f0;
+          }
+          .footer a {
+            color: #25D366;
+            text-decoration: none;
+          }
+          .code-box {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 8px;
+            text-align: center;
+            color: #25D366;
+            padding: 24px;
+            background-color: #f0fdf4;
+            border-radius: 12px;
+            border: 1px solid #bbf7d0;
+            margin: 24px 0;
+            font-family: "Courier New", monospace;
+          }
+          @media (max-width: 480px) {
+            .container { padding: 0 12px; }
+            .header { padding: 24px 16px; }
+            .content { padding: 24px 16px; }
+            .card { padding: 20px 16px; }
+          }
         </style>
       </head>
       <body>
         <div class="container">
-          <!-- Brand logo: PNG-rendered from the Cloudinary SVG so every
-               client (Gmail blocks SVG) can display it. Sits on an explicit
-               dark chip so it stays readable whether the client renders
-               light or dark mode. -->
-          <div style="text-align:center;margin:0 0 16px;">
-            <span style="display:inline-block;background-color:#0b1210;padding:14px 22px;border-radius:14px;">
-              <img src="https://res.cloudinary.com/dmuewlavb/image/upload/f_png,q_auto,w_360/v1791708791/sellup-logo-dark_cahmgj.svg" alt="Sell Up" width="150" height="40" style="display:block;height:40px;width:auto;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;" />
-            </span>
-          </div>
-          ${buildTemplateBody(template, data)}
-          <div class="footer">
-            <p>© 2026 Sell Up. All rights reserved.</p>
-            <p>Create your online store in minutes. Receive orders on WhatsApp.</p>
-          </div>
+          {{body}}
         </div>
       </body>
     </html>
   `;
-
-  return baseTemplate;
+  return baseTemplate(buildTemplateBody(template, data));
 }
 
 /**
@@ -326,11 +466,11 @@ export async function sendOrderStatusEmail(
       status,
       storeName,
       customerName: customerName || "Customer",
-    },
+    }
   });
 }
 
-/**
+  /**
  * Send customer welcome email
  */
 export async function sendCustomerWelcomeEmail(

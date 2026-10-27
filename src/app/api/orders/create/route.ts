@@ -5,6 +5,7 @@ import { eq, and, or, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { generateOrderNumber, formatPhoneNumber, generateWhatsAppLink, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import { sendOrderConfirmationEmail } from "@/lib/email";
+import { sendWhatsApp } from "@/lib/whatsapp";
 
 class OrderRequestError extends Error {
   constructor(message: string, public readonly status: 400 | 403 | 404 | 409) {
@@ -299,6 +300,16 @@ Order placed through Sell Up.`;
         store.storeName,
         validatedData.customerName
       ).catch((err) => console.error("Order confirmation email failed:", err));
+    }
+
+    // Fire-and-forget WhatsApp notification to the merchant about the new order.
+    // WhatsApp failures must never fail the order.
+    if (store.whatsappNumber && createdOrder) {
+      const merchantWhatsAppMessage = `🛍️ *New Order on ${store.storeName}*\n\nOrder #${orderNumber}\nCustomer: ${validatedData.customerName}\nPhone: ${validatedData.customerPhone}\nTotal: ₦${(total / 100).toLocaleString()}\nItems: ${orderItems.length}\n\nReply to this message or open WhatsApp to contact the customer:\n${generateWhatsAppLink(formatPhoneNumber(validatedData.customerPhone), `Hello ${validatedData.customerName}, this is ${store.storeName}. We received your order #${orderNumber}. We'll confirm it shortly!`)}`;
+      sendWhatsApp({
+        to: formatPhoneNumber(store.whatsappNumber),
+        message: merchantWhatsAppMessage,
+      }).catch((err) => console.error("Order WhatsApp notification failed:", err));
     }
 
     return NextResponse.json(
