@@ -26,6 +26,14 @@ function getInitialPaymentMethod(): string {
 }
 
 function getInitialPaystackKey(): string {
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem("sellup_paystack_public_key");
+      if (saved) return saved;
+    } catch {
+      // localStorage unavailable; ignore
+    }
+  }
   return "";
 }
 
@@ -172,6 +180,9 @@ export default function SettingsPage() {
   async function handleSavePaymentSettings() {
     setSaving(true);
     try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sellup_paystack_public_key", paystackKey);
+      }
       alert("Payment settings saved successfully!");
     } catch (error) {
       alert("Failed to save settings");

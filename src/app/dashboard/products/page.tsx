@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Package, Plus, Pencil, Eye } from "lucide-react";
+import { Package, Plus, Pencil, Eye, Upload, Trash2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { uploadImage, validateImageFile } from "@/lib/supabase/storage";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -34,7 +35,10 @@ export default function ProductsPage() {
     price: "",
     description: "",
     stock: "0",
+    images: [] as string[],
   });
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -124,6 +128,26 @@ export default function ProductsPage() {
         setSaving(false);
         return;
       }
+
+      // Upload images (up to 5) before creating the product
+      let imageUrls: string[] = [];
+      if (imageFiles.length > 0) {
+        setUploadingImages(true);
+        for (const file of imageFiles) {
+          try {
+            const result = await uploadImage(selectedStoreId, file, "products");
+            imageUrls.push(result.url);
+          } catch (uploadErr) {
+            console.error("Image upload error:", uploadErr);
+            setError("Failed to upload product images. Please try again.");
+            setSaving(false);
+            setUploadingImages(false);
+            return;
+          }
+        }
+        setUploadingImages(false);
+      }
+
       const res = await fetch("/api/products/create", {
         method: "POST",
         headers: {
@@ -136,6 +160,7 @@ export default function ProductsPage() {
           price: formData.price,
           description: formData.description,
           stock: parseInt(formData.stock) || 0,
+          images: imageUrls,
         }),
       });
       const data = await res.json();
@@ -145,7 +170,8 @@ export default function ProductsPage() {
         return;
       }
       setShowForm(false);
-      setFormData({ name: "", price: "", description: "", stock: "0" });
+      setFormData({ name: "", price: "", description: "", stock: "0", images: [] });
+      setImageFiles([]);
       await loadProducts();
     } catch {
       setError("Failed to add product");
@@ -283,16 +309,66 @@ export default function ProductsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Description
+                Product Images (up to 5)
               </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                className="input min-h-24 resize-none"
-                disabled={saving}
-              />
+              <div className="flex items-start gap-3">
+                <label className="flex flex-col items-center justify-center w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition disabled:cursor-not-allowed disabled:opacity-50">
+                  <Upload size={20} className="mb-1 text-gray-400" />
+                  <span className="text-xs text-gray-500">Upload</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []).filter(
+                        (f) => f.type.startsWith("image/")
+                      );
+                      if (imageFiles.length + files.length > 5) {
+                        setError("Maximum 5 images allowed.");
+                        return;
+                      }
+                      for (const file of files) {
+                        const valid = validateImageFile(file);
+                        if (!valid.valid) {
+                          setError(valid.error ?? "Invalid image file.");
+                          return;
+                        }
+                      }
+                      setError("");
+                      setImageFiles((prev) => [...prev, ...files]);
+                    }}
+                    disabled={saving || imageFiles.length >= 5}
+                    className="sr-only"
+                  />
+                </label>
+                {imageFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {imageFiles.map((file, idx) => (
+                      <div
+                        key={idx}
+                        className="relative group"
+                      >
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={`Preview ${idx + 1}`}
+                          className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setImageFiles((prev) => prev.filter((_, i) => i !== idx))}
+                          className="absolute -right-1 -top-1 flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-xs hover:bg-red-600 transition"
+                          aria-label={`Remove image ${idx + 1}`}
+                        >
+                          <Trash2 size={12} aria-hidden />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="text-[11px] text-gray-500 mt-1">
+                      {imageFiles.length}/5 images
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex gap-4">
               <button

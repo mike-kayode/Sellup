@@ -3,6 +3,7 @@
 /** Storefront v1 — shared mobile template. Design locked. */
 
 import { useMemo, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronRight,
   Clock,
@@ -33,6 +34,7 @@ import {
   type StorefrontProduct,
   type StorefrontStore,
   type StorefrontTab,
+  formatNaira,
 } from "./parts";
 
 export interface StorefrontV1Props {
@@ -53,14 +55,20 @@ export function StorefrontV1({
   theme,
   preview = false,
 }: StorefrontV1Props) {
-  const { cart, addToCart } = useCart();
+  const { cart, addToCart, removeFromCart } = useCart();
   const [tab, setTab] = useState<StorefrontTab>("home");
   const [chip, setChip] = useState("all");
   const [showAll, setShowAll] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const router = useRouter();
 
   const cartCount = cart.items.reduce((n, item) => n + item.quantity, 0);
+
+  const goToCheckout = () => {
+    if (cart.items.length === 0) return;
+    router.push(`/${store.storeSlug}/checkout`);
+  };
 
   // Resolve chips (catalog id, preset id or name) to category ids.
   const chipIds = useMemo(() => {
@@ -279,73 +287,84 @@ export function StorefrontV1({
             </section>
           )}
 
-          {tab === "orders" && (
-            <EmptyState
-              title="No orders yet"
-              message="Start shopping and your orders will show up here."
-              actionLabel="Start shopping"
-              onAction={() => setTab("home")}
-            />
-          )}
-
-          {tab === "account" && (
-            <section className="px-4 pt-4">
-              <div className="flex items-center gap-3 rounded-[16px] border border-slate-100 bg-white p-4 shadow-sm">
-                <BrandAvatar config={config} theme={theme} size={52} />
-                <div className="min-w-0">
-                  <p className="truncate text-[16px] font-extrabold text-slate-900">
-                    {config.brand.name || store.storeName}
-                  </p>
-                  <p className="truncate text-[12px] text-slate-500">
-                    {config.brand.tagline || "Thank you for shopping with us"}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 overflow-hidden rounded-[14px] border border-slate-100">
-                {whatsappNumber && (
-                  <a
-                    href={`https://wa.me/${whatsappNumber}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-[14px] font-semibold text-slate-700"
-                  >
-                    <MessageCircle size={18} style={{ color: theme.brand }} aria-hidden />
-                    WhatsApp support
-                    <ChevronRight size={16} className="ml-auto text-slate-400" aria-hidden />
-                  </a>
-                )}
-                {config.contact.phone && (
-                  <a
-                    href={`tel:${config.contact.phone}`}
-                    className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-[14px] font-semibold text-slate-700"
-                  >
-                    <Phone size={18} style={{ color: theme.brand }} aria-hidden />
-                    {config.contact.phone}
-                  </a>
-                )}
-                {config.contact.address && (
-                  <p className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-[14px] font-semibold text-slate-700">
-                    <MapPin size={18} style={{ color: theme.brand }} aria-hidden />
-                    {config.contact.address}
-                  </p>
-                )}
-                {config.contact.hours && (
-                  <p className="flex items-center gap-3 px-4 py-3.5 text-[14px] font-semibold text-slate-700">
-                    <Clock size={18} style={{ color: theme.brand }} aria-hidden />
-                    {config.contact.hours}
-                  </p>
-                )}
-                {!whatsappNumber &&
-                  !config.contact.phone &&
-                  !config.contact.address &&
-                  !config.contact.hours && (
-                    <p className="px-4 py-6 text-center text-[13px] text-slate-500">
-                      No contact details yet.
-                    </p>
+              {tab === "account" && (
+                <section
+                  aria-label="Customer account"
+                  className="p-4 space-y-4 max-w-[430px] mx-auto"
+                >
+                  <h2 className="text-[16px] font-extrabold text-slate-900">
+                    Your Account
+                  </h2>
+                  {cart.items.length > 0 ? (
+                    <>
+                      <div className="space-y-3">
+                        <p className="text-[13px] font-medium text-slate-700">
+                          Items in cart: {cartCount}
+                        </p>
+                        {cart.items.map((item) => (
+                          <div
+                            key={item.productId}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50"
+                          >
+                            {item.image ? (
+                              <img
+                                src={item.image}
+                                alt={item.name}
+                                className="h-10 w-10 rounded object-cover"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded flex items-center justify-center text-slate-400">
+                                🛍️
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-semibold text-slate-900 truncate">
+                                {item.name}
+                              </p>
+                              <p className="text-[12px] text-slate-500">
+                                {formatNaira(item.price)} × {item.quantity}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(item.productId)}
+                              aria-label="Remove from cart"
+                              className="p-1 text-slate-400 hover:text-slate-600"
+                            >
+                              <X size={16} aria-hidden />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-slate-200">
+                        <p className="text-[14px] font-bold text-slate-900">
+                          Total: {formatNaira(cart.total)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={goToCheckout}
+                          className="mt-3 w-full h-11 rounded-xl bg-[#25D366] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#1EBE54] transition"
+                        >
+                          Proceed to Checkout
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center gap-3 text-center">
+                      <div className="grid h-14 w-14 place-items-center rounded-full bg-slate-100 text-slate-400">
+                        <User size={28} aria-hidden />
+                      </div>
+                      <h3 className="text-[15px] font-extrabold text-slate-900">
+                        Your cart is empty
+                      </h3>
+                      <p className="text-[13px] text-slate-500">
+                        Browse products and add items to your cart.
+                      </p>
+                    </div>
                   )}
-              </div>
-            </section>
-          )}
+                </section>
+              )}
+
         </main>
 
         {/* Bottom menu + engraved "Powered by Sell Up" (spec section 3) */}
@@ -362,18 +381,19 @@ export function StorefrontV1({
               [
                 { id: "home" as const, label: "Home", Icon: HomeIcon },
                 { id: "categories" as const, label: "Categories", Icon: LayoutGrid },
-                { id: "orders" as const, label: "Orders", Icon: ShoppingBag },
+                { id: "cart" as const, label: "Cart", Icon: ShoppingCart },
                 { id: "account" as const, label: "Account", Icon: User },
               ] satisfies { id: StorefrontTab; label: string; Icon: typeof HomeIcon }[]
             ).map(({ id, label, Icon }) => {
               const active = tab === id;
+              const isCart = id === "cart";
               return (
                 <li key={id}>
                   <button
                     type="button"
                     onClick={() => setTab(id)}
                     aria-current={active ? "page" : undefined}
-                    className="flex h-[52px] w-16 flex-col items-center justify-center gap-1"
+                    className="flex h-[52px] w-16 flex-col items-center justify-center gap-1 relative"
                     style={{ color: active ? theme.brand : "#64748B" }}
                   >
                     <Icon
@@ -381,6 +401,11 @@ export function StorefrontV1({
                       aria-hidden
                       style={active ? { fill: "currentColor" } : undefined}
                     />
+                    {isCart && cartCount > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#DCF8C6] px-0.5 text-[10px] font-bold text-[#128C7E] border border-white">
+                        {cartCount}
+                      </span>
+                    )}
                     <span className="text-[11px] font-bold">{label}</span>
                   </button>
                 </li>

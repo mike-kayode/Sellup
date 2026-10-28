@@ -58,7 +58,7 @@ export interface StorefrontCategory {
   name: string;
 }
 
-export type StorefrontTab = "home" | "categories" | "orders" | "account";
+export type StorefrontTab = "home" | "categories" | "cart" | "account";
 
 /* -------------------------------- helpers ---------------------------------- */
 
