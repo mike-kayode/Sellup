@@ -313,6 +313,66 @@ export const orders = pgTable(
   ]
 );
 
+// ---------------------------------------------------------------------------
+// Buyer (user) accounts per merchant — Phase 1.
+// customer_sessions: one HttpOnly cookie per store; only the SHA-256 hash of
+// the random session token is stored. customer_tokens: password-reset and
+// verification tokens scoped to (store_id, customer_id, type).
+// ---------------------------------------------------------------------------
+export const customerSessions = pgTable(
+  "customer_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    cookieName: varchar("cookie_name", { length: 100 }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    ipAddress: varchar("ip_address", { length: 45 }),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("customer_sessions_store_id_idx").on(table.storeId),
+    index("customer_sessions_customer_id_idx").on(table.customerId),
+    index("customer_sessions_token_hash_idx").on(table.tokenHash),
+    index("customer_sessions_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
+export const customerTokens = pgTable(
+  "customer_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 30 }).notNull(), // password_reset | email_verify | whatsapp_verify
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("customer_tokens_store_id_idx").on(table.storeId),
+    index("customer_tokens_customer_id_idx").on(table.customerId),
+    index("customer_tokens_type_hash_idx").on(table.type, table.tokenHash),
+    index("customer_tokens_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
 // Customer and order funnel events used for platform analytics.
 export const analyticsEvents = pgTable(
   "analytics_events",
@@ -652,12 +712,17 @@ export const auditLogs = pgTable(
     newValue: jsonb("new_value"),
     ipAddress: varchar("ip_address", { length: 45 }),
     userAgent: text("user_agent"),
+    storeId: uuid("store_id").references(() => businesses.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("audit_logs_actor_id_idx").on(table.actorId),
     index("audit_logs_resource_idx").on(table.resourceType, table.resourceId),
     index("audit_logs_created_at_idx").on(table.createdAt),
+    index("audit_logs_store_id_idx").on(table.storeId),
+    index("audit_logs_store_created_idx").on(table.storeId, table.createdAt),
   ]
 );
 
@@ -719,6 +784,9 @@ export const domains = pgTable(
     sslStatus: varchar("ssl_status", { length: 50 }).default("pending"),
     verificationStatus: varchar("verification_status", { length: 50 }).default("pending"),
     dnsRecords: jsonb("dns_records").default([]),
+    cloudflareHostnameId: varchar("cloudflare_hostname_id", { length: 255 }),
+    verificationToken: varchar("verification_token", { length: 255 }),
+    dnsCheckedAt: timestamp("dns_checked_at", { withTimezone: true }),
     connectedAt: timestamp("connected_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -726,6 +794,8 @@ export const domains = pgTable(
   (table) => [
     index("domains_store_id_idx").on(table.storeId),
     index("domains_status_idx").on(table.status),
+    index("domains_verification_token_idx").on(table.verificationToken),
+    index("domains_cloudflare_hostname_id_idx").on(table.cloudflareHostnameId),
   ]
 );
 
@@ -750,6 +820,40 @@ export const integrations = pgTable(
   ]
 );
 
+// Integration connections (Phase 5): per-store provider connections with
+// encrypted tokens (AES-256-GCM), scopes, expiry, last sync/error.
+export const integrationConnections = pgTable(
+  "integration_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    provider: varchar("provider", { length: 50 }).notNull(), // meta | tiktok | whatsapp | google | ...
+    status: varchar("status", { length: 30 }).notNull().default("disconnected"), // connected | disconnected | error | expired
+    scopes: jsonb("scopes").notNull().default([]),
+    externalIds: jsonb("external_ids").notNull().default({}),
+    encryptedToken: text("encrypted_token"), // AES-256-GCM encrypted access token
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique(
+      "integration_connections_store_id_provider_unique"
+    ).on(table.storeId, table.provider),
+    index("integration_connections_store_id_idx").on(table.storeId),
+    index("integration_connections_provider_idx").on(table.provider),
+    index("integration_connections_status_idx").on(table.status),
+  ]
+);
+
 // API Keys
 export const apiKeys = pgTable(
   "api_keys",
@@ -758,13 +862,299 @@ export const apiKeys = pgTable(
     name: varchar("name", { length: 100 }).notNull(),
     prefix: varchar("prefix", { length: 20 }).notNull(),
     hashedKey: text("hashed_key").notNull(),
-    lastUsed: timestamp("last_used"),
+    storeId: uuid("store_id").references(() => businesses.id, {
+      onDelete: "cascade",
+    }),
+    scopes: jsonb("scopes").notNull().default([]),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    lastUsedIp: varchar("last_used_ip", { length: 45 }),
     isActive: boolean("is_active").default(true),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
     index("api_keys_prefix_idx").on(table.prefix),
+    index("api_keys_store_id_idx").on(table.storeId),
+    index("api_keys_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
+// Database-backed rate limit counters (Phase 0 safety net).
+// One row per (identifier, endpoint) per time window. Updated atomically by
+// src/lib/rate-limit.ts so limits survive restarts across cPanel processes.
+export const rateLimitCounters = pgTable(
+  "rate_limit_counters",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    identifier: varchar("identifier", { length: 255 }).notNull(),
+    endpoint: varchar("endpoint", { length: 100 }).notNull(),
+    count: integer("count").notNull().default(0),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("rate_limit_counters_identifier_endpoint_unique").on(
+      table.identifier,
+      table.endpoint
+    ),
+    index("rate_limit_counters_identifier_endpoint_idx").on(
+      table.identifier,
+      table.endpoint
+    ),
+    index("rate_limit_counters_window_start_idx").on(table.windowStart),
+  ]
+);
+
+// Stock locations per store (Phase 3).
+export const inventoryLocations = pgTable(
+  "inventory_locations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 100 }).notNull(),
+    address: text("address"),
+    isActive: boolean("is_active").notNull().default(true),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("inventory_locations_store_id_idx").on(table.storeId),
+    index("inventory_locations_default_idx").on(table.storeId, table.isDefault),
+  ]
+);
+
+// Product variants (SKU, barcode, cost, price) per store per product (Phase 3).
+export const productVariants = pgTable(
+  "product_variants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    sku: varchar("sku", { length: 100 }),
+    barcode: varchar("barcode", { length: 100 }),
+    name: varchar("name", { length: 255 }).notNull(),
+    costPrice: decimal("cost_price", { precision: 12, scale: 2 }),
+    price: decimal("price", { precision: 12, scale: 2 }).notNull(),
+    stock: integer("stock").notNull().default(0),
+    weightGrams: integer("weight_grams"),
+    isActive: boolean("is_active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("product_variants_store_id_sku_unique").on(table.storeId, table.sku),
+    unique(
+      "product_variants_store_id_barcode_unique"
+    ).on(table.storeId, table.barcode),
+    index("product_variants_store_id_idx").on(table.storeId),
+    index("product_variants_product_id_idx").on(table.productId),
+    index("product_variants_sku_idx").on(table.sku),
+    index("product_variants_barcode_idx").on(table.barcode),
+    index("product_variants_is_active_idx").on(table.isActive),
+  ]
+);
+
+// Stock levels per variant per location (Phase 3).
+export const stockLevels = pgTable(
+  "stock_levels",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    variantId: uuid("variant_id")
+      .notNull()
+      .references(() => productVariants.id, { onDelete: "cascade" }),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => inventoryLocations.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").notNull().default(0),
+    reserved: integer("reserved").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique(
+      "stock_levels_variant_id_location_id_unique"
+    ).on(table.variantId, table.locationId),
+    index("stock_levels_store_id_idx").on(table.storeId),
+    index("stock_levels_variant_id_idx").on(table.variantId),
+    index("stock_levels_location_id_idx").on(table.locationId),
+  ]
+);
+
+// Append-only stock ledger (Phase 3).
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    variantId: uuid("variant_id")
+      .notNull()
+      .references(() => productVariants.id, { onDelete: "cascade" }),
+    locationId: uuid("location_id").references(() => inventoryLocations.id, {
+      onDelete: "set null",
+    }),
+    type: varchar("type", { length: 30 }).notNull(),
+    quantity: integer("quantity").notNull(),
+    referenceType: varchar("reference_type", { length: 30 }),
+    referenceId: uuid("reference_id"),
+    reason: text("reason"),
+    notes: text("notes"),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("stock_movements_store_id_idx").on(table.storeId),
+    index("stock_movements_variant_id_idx").on(table.variantId),
+    index("stock_movements_location_id_idx").on(table.locationId),
+    index("stock_movements_type_idx").on(table.type),
+    index("stock_movements_created_at_idx").on(table.createdAt),
+    index("stock_movements_reference_idx").on(
+      table.referenceType,
+      table.referenceId
+    ),
+  ]
+);
+
+// Suppliers per store (Phase 3).
+export const suppliers = pgTable(
+  "suppliers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    contactName: varchar("contact_name", { length: 255 }),
+    phone: varchar("phone", { length: 20 }),
+    email: varchar("email", { length: 255 }),
+    address: text("address"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("suppliers_store_id_idx").on(table.storeId)]
+);
+
+// Purchase orders per store (Phase 3).
+export const purchaseOrders = pgTable(
+  "purchase_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    supplierId: uuid("supplier_id")
+      .notNull()
+      .references(() => suppliers.id, { onDelete: "cascade" }),
+    poNumber: varchar("po_number", { length: 100 }).notNull(),
+    status: varchar("status", { length: 30 }).notNull().default("draft"),
+    locationId: uuid("location_id").references(() => inventoryLocations.id, {
+      onDelete: "set null",
+    }),
+    expectedDate: timestamp("expected_date", { withTimezone: true }),
+    receivedDate: timestamp("received_date", { withTimezone: true }),
+    totalCost: decimal("total_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+    notes: text("notes"),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("purchase_orders_store_id_po_number_unique").on(
+      table.storeId,
+      table.poNumber
+    ),
+    index("purchase_orders_store_id_idx").on(table.storeId),
+    index("purchase_orders_status_idx").on(table.status),
+  ]
+);
+
+// Purchase order line items (Phase 3).
+export const purchaseOrderItems = pgTable(
+  "purchase_order_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    purchaseOrderId: uuid("purchase_order_id")
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    variantId: uuid("variant_id")
+      .notNull()
+      .references(() => productVariants.id, { onDelete: "cascade" }),
+    quantityOrdered: integer("quantity_ordered").notNull().default(0),
+    quantityReceived: integer("quantity_received").notNull().default(0),
+    unitCost: decimal("unit_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+  },
+  (table) => [
+    index("purchase_order_items_po_id_idx").on(table.purchaseOrderId),
+    index("purchase_order_items_variant_id_idx").on(table.variantId),
+  ]
+);
+
+// Reorder points (Phase 3).
+export const reorderPoints = pgTable(
+  "reorder_points",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    variantId: uuid("variant_id")
+      .notNull()
+      .references(() => productVariants.id, { onDelete: "cascade" }),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => inventoryLocations.id, { onDelete: "cascade" }),
+    reorderPoint: integer("reorder_point").notNull().default(0),
+    reorderQuantity: integer("reorder_quantity").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique(
+      "reorder_points_variant_id_location_id_unique"
+    ).on(table.variantId, table.locationId),
+    index("reorder_points_store_id_idx").on(table.storeId),
+    index("reorder_points_variant_id_idx").on(table.variantId),
   ]
 );
 
@@ -787,6 +1177,40 @@ export const webhooks = pgTable(
   (table) => [
     index("webhooks_store_id_idx").on(table.storeId),
     index("webhooks_status_idx").on(table.status),
+  ]
+);
+
+// Webhook deliveries log with retry scheduling (Phase 6).
+export const webhookDeliveries = pgTable(
+  "webhook_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    webhookId: uuid("webhook_id")
+      .notNull()
+      .references(() => webhooks.id, { onDelete: "cascade" }),
+    event: varchar("event", { length: 100 }).notNull(),
+    url: varchar("url", { length: 500 }).notNull(),
+    status: varchar("status", { length: 30 }).notNull().default("pending"),
+    attempt: integer("attempt").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastHttpCode: integer("last_http_code"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("webhook_deliveries_store_id_idx").on(table.storeId),
+    index("webhook_deliveries_webhook_id_idx").on(table.webhookId),
+    index("webhook_deliveries_status_idx").on(table.status),
+    index("webhook_deliveries_next_attempt_idx").on(table.nextAttemptAt),
   ]
 );
 
@@ -1162,5 +1586,236 @@ export const images = pgTable(
     index("images_owner_id_idx").on(table.ownerId),
     index("images_resource_idx").on(table.resourceType, table.resourceId),
     index("images_file_path_idx").on(table.filePath),
+  ]
+);
+
+// Invoices, quotes and receipts (Phase 7).
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    orderId: uuid("order_id").references(() => orders.id, {
+      onDelete: "set null",
+    }),
+    invoiceNumber: varchar("invoice_number", { length: 50 }).notNull(),
+    type: varchar("type", { length: 20 }).notNull().default("invoice"),
+    status: varchar("status", { length: 20 }).notNull().default("draft"),
+    subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
+    tax: decimal("tax", { precision: 12, scale: 2 }).notNull().default("0"),
+    discount: decimal("discount", { precision: 12, scale: 2 }).notNull().default("0"),
+    total: decimal("total", { precision: 12, scale: 2 }).notNull().default("0"),
+    amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default("0"),
+    currency: varchar("currency", { length: 10 }).notNull().default("NGN"),
+    dueDate: timestamp("due_date", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    pdfUrl: varchar("pdf_url", { length: 500 }),
+    paymentLink: varchar("payment_link", { length: 500 }),
+    proofOfPaymentUrl: varchar("proof_of_payment_url", { length: 500 }),
+    notes: text("notes"),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique(
+      "invoices_store_id_invoice_number_unique"
+    ).on(table.storeId, table.invoiceNumber),
+    index("invoices_store_id_idx").on(table.storeId),
+    index("invoices_customer_id_idx").on(table.customerId),
+    index("invoices_order_id_idx").on(table.orderId),
+    index("invoices_status_idx").on(table.status),
+    index("invoices_type_idx").on(table.type),
+    index("invoices_created_at_idx").on(table.createdAt),
+  ]
+);
+
+// Invoice line items (Phase 7).
+export const invoiceItems = pgTable(
+  "invoice_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    productId: uuid("product_id").references(() => products.id, {
+      onDelete: "set null",
+    }),
+    productName: varchar("product_name", { length: 255 }).notNull(),
+    description: text("description"),
+    quantity: integer("quantity").notNull().default(1),
+    unitPrice: decimal("unit_price", { precision: 12, scale: 2 }).notNull().default("0"),
+    lineTotal: decimal("line_total", { precision: 12, scale: 2 }).notNull().default("0"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("invoice_items_invoice_id_idx").on(table.invoiceId),
+    index("invoice_items_product_id_idx").on(table.productId),
+  ]
+);
+
+// Shipping zones (Phase 7).
+export const shippingZones = pgTable(
+  "shipping_zones",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 100 }).notNull(),
+    description: text("description"),
+    countries: jsonb("countries").notNull().default([]),
+    states: jsonb("states").notNull().default([]),
+    isActive: boolean("is_active").notNull().default(true),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("shipping_zones_store_id_idx").on(table.storeId),
+  ]
+);
+
+// Shipping rates (Phase 7).
+export const shippingRates = pgTable(
+  "shipping_rates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    zoneId: uuid("zone_id")
+      .notNull()
+      .references(() => shippingZones.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 100 }).notNull(),
+    type: varchar("type", { length: 30 }).notNull().default("flat_rate"),
+    price: decimal("price", { precision: 12, scale: 2 }).notNull().default("0"),
+    minOrderAmount: decimal("min_order_amount", { precision: 12, scale: 2 }),
+    maxOrderAmount: decimal("max_order_amount", { precision: 12, scale: 2 }),
+    minWeight: decimal("min_weight", { precision: 10, scale: 2 }),
+    maxWeight: decimal("max_weight", { precision: 10, scale: 2 }),
+    estimatedDaysMin: integer("estimated_days_min"),
+    estimatedDaysMax: integer("estimated_days_max"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("shipping_rates_zone_id_idx").on(table.zoneId),
+  ]
+);
+
+// Expenses (Phase 7 finance).
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    category: varchar("category", { length: 100 }).notNull(),
+    amount: decimal("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    currency: varchar("currency", { length: 10 }).notNull().default("NGN"),
+    taxAmount: decimal("tax_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    taxRate: decimal("tax_rate", { precision: 5, scale: 4 }).notNull().default("0"),
+    description: text("description"),
+    receiptUrl: varchar("receipt_url", { length: 500 }),
+    expenseDate: timestamp("expense_date", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("expenses_store_id_idx").on(table.storeId),
+    index("expenses_category_idx").on(table.category),
+    index("expenses_expense_date_idx").on(table.expenseDate),
+  ]
+);
+
+// Loyalty points (Phase 7 growth).
+export const loyaltyPoints = pgTable(
+  "loyalty_points",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    points: integer("points").notNull().default(0),
+    reason: varchar("reason", { length: 100 }).notNull(),
+    referenceType: varchar("reference_type", { length: 50 }),
+    referenceId: uuid("reference_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("loyalty_points_store_id_idx").on(table.storeId),
+    index("loyalty_points_customer_id_idx").on(table.customerId),
+  ]
+);
+
+// Referrals (Phase 7 growth).
+export const referrals = pgTable(
+  "referrals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    referrerId: uuid("referrer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    refereeId: uuid("referee_id").references(() => customers.id, {
+      onDelete: "set null",
+    }),
+    referralCode: varchar("referral_code", { length: 50 }).notNull(),
+    status: varchar("status", { length: 30 }).notNull().default("pending"),
+    rewardPoints: integer("reward_points").notNull().default(0),
+    rewardAmount: decimal("reward_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    convertedOrderId: uuid("converted_order_id").references(() => orders.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("referrals_store_id_referral_code_unique").on(
+      table.storeId,
+      table.referralCode
+    ),
+    index("referrals_store_id_idx").on(table.storeId),
+    index("referrals_referrer_id_idx").on(table.referrerId),
+    index("referrals_status_idx").on(table.status),
   ]
 );

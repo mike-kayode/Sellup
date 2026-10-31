@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { APP_ROUTE_SLUGS, MARKETING_ROUTE_SLUGS, SYSTEM_SLUGS } from "@/lib/slugs";
+import { resolveCustomDomain } from "@/lib/custom-domains";
 
 /**
  * SellUp subdomain architecture
@@ -49,7 +50,7 @@ function splitHost(host: string): { hostname: string; port: string } {
 
 type Mode = "apex" | "app" | "try" | "store" | "dev" | "other";
 
-export default function proxy(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const search = request.nextUrl.search;
   // Business slug when the host is {slug}.<base> (store subdomain mode).
@@ -115,7 +116,33 @@ export default function proxy(request: NextRequest) {
     mode = "dev";
   }
 
-  if (mode === "dev") return NextResponse.next();
+  if (mode === "dev") {
+    // Custom domain resolution (Phase 4). Resolve an active custom hostname to
+    // its storefront. Requires the Cloudflare-set shared secret so hostnames
+    // cannot be spoofed by direct requests to the origin.
+    if (
+      hostname !== configuredBase &&
+      !hostname.endsWith("." + configuredBase) &&
+      !isLocalHostname(hostname)
+    ) {
+      const secret = request.headers.get("x-custom-domain-secret");
+      if (
+        !process.env.CUSTOM_DOMAIN_SECRET ||
+        secret !== process.env.CUSTOM_DOMAIN_SECRET
+      ) {
+        return new NextResponse("Forbidden", { status: 403 });
+      }
+      const resolved = await resolveCustomDomain(hostname);
+      if (resolved) {
+        const path = request.nextUrl.pathname;
+        const search = request.nextUrl.search;
+        return NextResponse.rewrite(
+          `https://${configuredBase}/${resolved.storeSlug}${path}${search}`
+        );
+      }
+    }
+    return NextResponse.next();
+  }
 
   const local = isLocalHostname(baseDomain) || baseDomain === "localhost";
   const scheme = local ? request.nextUrl.protocol : "https:";

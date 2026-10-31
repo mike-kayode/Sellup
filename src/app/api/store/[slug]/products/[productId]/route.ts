@@ -71,6 +71,12 @@ export async function GET(
           stock: product.stock,
           categoryId: product.categoryId,
         },
+        store: {
+          id: store.id,
+          storeName: store.storeName ?? "",
+          storeSlug: slug,
+          whatsappNumber: store.whatsappNumber ?? null,
+        },
       },
       { status: 200 }
     );

@@ -7,20 +7,31 @@ import { useRouter } from "next/navigation";
 import {
   ChevronRight,
   Clock,
+  Gift,
   Home as HomeIcon,
+  Lock,
   LayoutGrid,
+  Medal,
   MapPin,
   MessageCircle,
   Phone,
+  RefreshCw,
   Search,
+  ShieldCheck,
   ShoppingBag,
   ShoppingCart,
+  Truck,
   User,
   X,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-context";
 import type { StoreConfig } from "@/lib/storefront/config";
 import { themeToCssVars, type StorefrontTheme } from "@/lib/storefront/theme";
+import { WhatsAppChatButton } from "@/components/storefront/whatsapp-chat-button";
+import { ThemeProvider, useTheme } from "@/components/storefront/theme-provider";
+import { AnnouncementBar } from "@/components/storefront/announcement-bar";
+import { TrustBadges } from "@/components/storefront/trust-badges";
+import { PremiumProductCard } from "@/components/storefront/premium-product-card";
 import {
   BrandAvatar,
   CategoryChips,
@@ -28,7 +39,6 @@ import {
   HeroBanner,
   presetIcon,
   productImage,
-  ProductCard,
   VerifiedBadge,
   type StorefrontCategory,
   type StorefrontProduct,
@@ -57,6 +67,14 @@ export function StorefrontV1({
 }: StorefrontV1Props) {
   const { cart, addToCart, removeFromCart } = useCart();
   const [tab, setTab] = useState<StorefrontTab>("home");
+  const [device, setDevice] = useState<"mobile" | "desktop" | "tablet">("mobile");
+
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    if (/tablet|ipad|playbook|silk/i.test(ua)) setDevice("tablet");
+    else if (/mobi|android|iphone|ipod/i.test(ua)) setDevice("mobile");
+    else setDevice("desktop");
+  }, []);
   const [chip, setChip] = useState("all");
   const [showAll, setShowAll] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -123,11 +141,13 @@ export function StorefrontV1({
       : products.length;
 
   return (
-    <div className="flex min-h-screen justify-center bg-slate-100">
-      <div
-        className="relative w-full max-w-[430px] bg-white shadow-xl"
-        style={themeToCssVars(theme) as CSSProperties}
-      >
+    <ThemeProvider defaultMode={config.themeMode}>
+      <div className="flex min-h-screen justify-center bg-slate-100">
+        <AnnouncementBar bar={config.announcementBar} />
+        <div
+          className="relative w-full max-w-[430px] bg-white shadow-xl"
+          style={themeToCssVars(theme) as CSSProperties}
+        >
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-100 bg-white px-4 py-3">
           <BrandAvatar config={config} theme={theme} />
           <div className="min-w-0 flex-1">
@@ -144,6 +164,25 @@ export function StorefrontV1({
                 {config.brand.tagline ||
                   `${config.vertical.charAt(0).toUpperCase()}${config.vertical.slice(1)}`}
               </p>
+            )}
+            {config.trustBadges.enabled && config.trustBadges.badges.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1">
+                {config.trustBadges.badges.map((b, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[10px] font-medium text-slate-600"
+                    aria-label={b.label}
+                  >
+                    {b.icon === "truck" && <Truck size={10} className="text-slate-500" aria-hidden />}
+                    {b.icon === "shield" && <ShieldCheck size={10} className="text-slate-500" aria-hidden />}
+                    {b.icon === "lock" && <Lock size={10} className="text-slate-500" aria-hidden />}
+                    {b.icon === "gift" && <Gift size={10} className="text-slate-500" aria-hidden />}
+                    {b.icon === "refresh" && <RefreshCw size={10} className="text-slate-500" aria-hidden />}
+                    {b.icon === "medal" && <Medal size={10} className="text-slate-500" aria-hidden />}
+                    {b.label}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
           <button
@@ -234,12 +273,12 @@ export function StorefrontV1({
                 ) : (
                   <div className="mt-3 grid grid-cols-2 gap-3">
                     {gridProducts.map((p) => (
-                      <ProductCard
+                      <PremiumProductCard
                         key={p.id}
                         product={p}
-                        theme={theme}
-                        href={productHref(p.id)}
+                        storeSlug={store.storeSlug}
                         onAdd={() => add(p)}
+                        className="h-full"
                       />
                     ))}
                   </div>
@@ -425,7 +464,20 @@ export function StorefrontV1({
             Powered by SellUp
           </div>
         </nav>
+        {/* WhatsApp chat button (Phase 2.1) */}
+        {config.whatsappChat && (
+          <WhatsAppChatButton
+            config={config.whatsappChat}
+            store={{
+              storeName: store.storeName,
+              storeSlug: store.storeSlug,
+            }}
+            page={tab === "cart" ? "cart" : "home"}
+            device={device}
+          />
+        )}
       </div>
     </div>
+    </ThemeProvider>
   );
 }

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       request.headers.get("x-forwarded-for")?.split(",")[0] ||
       request.headers.get("x-real-ip") ||
       "unknown";
-    const rate = checkAuthRateLimit(`login:${ip}`);
+    const rate = await checkAuthRateLimit(`login:${ip}`);
     if (!rate.success) {
       return NextResponse.json(
         {

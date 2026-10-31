@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ShoppingCart, ArrowLeft, Star } from "lucide-react";
-import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
+import { WhatsAppChatButton } from "@/components/storefront/whatsapp-chat-button";
+
+import Link from "next/link";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -28,6 +30,11 @@ export default function ProductDetailPage() {
 
   const [quantity, setQuantity] = useState(1);
   const [product, setProduct] = useState<Product | null>(null);
+  const [store, setStore] = useState<{
+    storeName: string;
+    storeSlug: string;
+    whatsappNumber: string | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [added, setAdded] = useState(false);
 
@@ -41,6 +48,11 @@ export default function ProductDetailPage() {
         if (res.ok) {
           const data = await res.json();
           setProduct(data.product);
+          setStore({
+            storeName: data.store?.storeName ?? slug,
+            storeSlug: slug,
+            whatsappNumber: data.store?.whatsappNumber ?? null,
+          });
         } else {
           router.push(`/${slug}`);
         }
@@ -260,6 +272,35 @@ export default function ProductDetailPage() {
               >
                 Proceed to Checkout
               </Link>
+              {store && product && (
+                <WhatsAppChatButton
+                  config={{
+                    enabled: Boolean(store.whatsappNumber),
+                    number: store.whatsappNumber ?? "",
+                    position: "bottom-right",
+                    color: "#25D366",
+                    size: "medium",
+                    greetingText: "Hi! How can we help you today?",
+                    agentName: "",
+                    agentAvatar: "",
+                    businessHours: {
+                      enabled: false,
+                      timezone: "Africa/Lagos",
+                      awayMessage: "We're offline — leave a message and we'll reply soon.",
+                    },
+                    showOnPages: ["all"],
+                    messageTemplate:
+                      "Hi {store}, I'm interested in {product} ({price}). {url}",
+                    agents: [],
+                  }}
+                  store={store}
+                  page="product"
+                  productName={product.name}
+                  productPrice={product.price}
+                  productUrl={`/${slug}/products/${product.id}`}
+                  device="mobile"
+                />
+              )}
             </div>
           </div>
         </div>

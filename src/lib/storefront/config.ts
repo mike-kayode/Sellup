@@ -45,6 +45,55 @@ export interface StoreConfigContact {
   hours: string;
 }
 
+/**
+ * Floating WhatsApp chat button settings (Phase 2.1).
+ * `number` is stored in E.164 (e.g. +2348012345678) and normalised on read.
+ */
+export interface StoreConfigWhatsAppChat {
+  enabled: boolean;
+  number: string;
+  position: "bottom-right" | "bottom-left";
+  color: string;
+  size: "small" | "medium" | "large";
+  greetingText: string;
+  agentName: string;
+  agentAvatar: string;
+  businessHours: {
+    enabled: boolean;
+    timezone: string;
+    awayMessage: string;
+  };
+  showOnPages: ("home" | "product" | "cart" | "checkout" | "all")[];
+  messageTemplate: string;
+  agents: { name: string; number: string }[];
+}
+
+/**
+ * Premium storefront foundation (Phase 2.2a).
+ * `themeMode` selects light / dark / system appearance. The announcement bar
+ * and trust badges are config-driven so merchants can enable them without
+ * touching layout code.
+ */
+export type ThemeMode = "light" | "dark" | "system";
+
+export interface StoreConfigAnnouncementBar {
+  enabled: boolean;
+  text: string;
+  link: string;
+  backgroundColor: string;
+  textColor: string;
+}
+
+export interface StoreConfigTrustBadge {
+  label: string;
+  icon: string; // lucide icon key
+}
+
+export interface StoreConfigTrustBadges {
+  enabled: boolean;
+  badges: StoreConfigTrustBadge[];
+}
+
 export interface StoreConfigDelivery {
   zones: { name: string; fee: number }[];
   pickup: boolean;
@@ -64,6 +113,10 @@ export interface StoreConfig {
   hero: StoreConfigHero;
   categories: StoreConfigCategory[];
   contact: StoreConfigContact;
+  whatsappChat: StoreConfigWhatsAppChat;
+  themeMode: ThemeMode;
+  announcementBar: StoreConfigAnnouncementBar;
+  trustBadges: StoreConfigTrustBadges;
   delivery: StoreConfigDelivery;
   payments: StoreConfigPayments;
   orderStatuses: string[];
@@ -124,6 +177,106 @@ export const storeConfigSchema = z.object({
       hours: z.string().max(120).default(""),
     })
     .default({ whatsapp: "", phone: "", address: "", hours: "" }),
+  whatsappChat: z
+    .object({
+      enabled: z.boolean().default(false),
+      number: z.string().max(30).default(""),
+      position: z.enum(["bottom-right", "bottom-left"]).default("bottom-right"),
+      color: z.string().max(20).default("#25D366"),
+      size: z.enum(["small", "medium", "large"]).default("medium"),
+      greetingText: z
+        .string()
+        .max(160)
+        .default("Hi! How can we help you today?"),
+      agentName: z.string().max(80).default(""),
+      agentAvatar: z.string().max(300).default(""),
+      businessHours: z
+        .object({
+          enabled: z.boolean().default(false),
+          timezone: z.string().max(60).default("Africa/Lagos"),
+          awayMessage: z
+            .string()
+            .max(200)
+            .default("We're offline — leave a message and we'll reply soon."),
+        })
+        .default({
+          enabled: false,
+          timezone: "Africa/Lagos",
+          awayMessage: "We're offline — leave a message and we'll reply soon.",
+        }),
+      showOnPages: z
+        .array(
+          z.enum([
+            "home",
+            "product",
+            "cart",
+            "checkout",
+            "all",
+          ])
+        )
+        .default(["all"]),
+      messageTemplate: z
+        .string()
+        .max(300)
+        .default("Hi {store}, I'm interested in {product} ({price}). {url}"),
+      agents: z
+        .array(
+          z.object({
+            name: z.string().max(80).default(""),
+            number: z.string().max(30).default(""),
+          })
+        )
+        .default([]),
+    })
+    .default({
+      enabled: false,
+      number: "",
+      position: "bottom-right",
+      color: "#25D366",
+      size: "medium",
+      greetingText: "Hi! How can we help you today?",
+      agentName: "",
+      agentAvatar: "",
+      businessHours: {
+        enabled: false,
+        timezone: "Africa/Lagos",
+        awayMessage: "We're offline — leave a message and we'll reply soon.",
+      },
+      showOnPages: ["all"],
+      messageTemplate:
+        "Hi {store}, I'm interested in {product} ({price}). {url}",
+      agents: [],
+    }),
+  themeMode: z.enum(["light", "dark", "system"]).default("light"),
+  announcementBar: z
+    .object({
+      enabled: z.boolean().default(false),
+      text: z.string().max(200).default(""),
+      link: z.string().max(300).default("/"),
+      backgroundColor: z.string().max(20).default("#25D366"),
+      textColor: z.string().max(20).default("#FFFFFF"),
+    })
+    .default({
+      enabled: false,
+      text: "",
+      link: "/",
+      backgroundColor: "#25D366",
+      textColor: "#FFFFFF",
+    }),
+  trustBadges: z
+    .object({
+      enabled: z.boolean().default(false),
+      badges: z
+        .array(
+          z.object({
+            label: z.string().max(60).default(""),
+            icon: z.string().max(40).default("truck"),
+          })
+        )
+        .max(5)
+        .default([]),
+    })
+    .default({ enabled: false, badges: [] }),
   delivery: z
     .object({
       zones: z
@@ -213,6 +366,34 @@ export function defaultConfig(seed: StoreConfigSeed): StoreConfig {
       address: "",
       hours: "",
     },
+    whatsappChat: {
+      enabled: false,
+      number: seed.whatsappNumber || "",
+      position: "bottom-right",
+      color: "#25D366",
+      size: "medium",
+      greetingText: "Hi! How can we help you today?",
+      agentName: "",
+      agentAvatar: "",
+      businessHours: {
+        enabled: false,
+        timezone: "Africa/Lagos",
+        awayMessage: "We're offline — leave a message and we'll reply soon.",
+      },
+      showOnPages: ["all"],
+      messageTemplate:
+        "Hi {store}, I'm interested in {product} ({price}). {url}",
+      agents: [],
+    },
+    themeMode: "light",
+    announcementBar: {
+      enabled: false,
+      text: "",
+      link: "/",
+      backgroundColor: "#25D366",
+      textColor: "#FFFFFF",
+    },
+    trustBadges: { enabled: false, badges: [] },
     delivery: { zones: [], pickup: true },
     payments: { paystack: false, flutterwave: false, transfer: true, cod: true },
     orderStatuses: ["Pending", "Confirmed", "Out for delivery", "Delivered"],
@@ -243,6 +424,10 @@ export function resolveConfig(
   if (!config.hero.subtitle) config.hero.subtitle = fallback.hero.subtitle;
   if (!config.contact.whatsapp && fallback.contact.whatsapp) {
     config.contact.whatsapp = fallback.contact.whatsapp;
+  }
+  // Seed WhatsApp chat number from the store's WhatsApp number when unset.
+  if (!config.whatsappChat.number && fallback.whatsappChat.number) {
+    config.whatsappChat.number = fallback.whatsappChat.number;
   }
   if (config.categories.length === 0) config.categories = fallback.categories;
 

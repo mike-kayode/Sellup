@@ -9,6 +9,26 @@
     --success: #22C55E;
     --warning: #F59E0B;
     --error: #EF4444;
+
+    --bg: #FFFFFF;
+    --bg-muted: #F8FAFC;
+    --text: #0F172A;
+    --text-muted: #475569;
+    --border: #E2E8F0;
+    --card: #FFFFFF;
+    --card-muted: #F1F5F9;
+    --invert-text: #FFFFFF;
+  }
+
+  .dark {
+    --bg: #0B0F19;
+    --bg-muted: #111827;
+    --text: #F8FAFC;
+    --text-muted: #94A3B8;
+    --border: #1E293B;
+    --card: #111827;
+    --card-muted: #1E293B;
+    --invert-text: #0F172A;
   }
 }
 
@@ -29,8 +49,16 @@
     @apply rounded-2xl bg-white shadow-sm border border-gray-100;
   }
 
+  .dark .card {
+    @apply bg-[#111827] border-[#1E293B] shadow-none;
+  }
+
   .input {
     @apply w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:border-transparent transition-all;
+  }
+
+  .dark .input {
+    @apply bg-[#111827] border-[#1E293B] text-slate-100 placeholder-slate-500;
   }
 
   .badge {

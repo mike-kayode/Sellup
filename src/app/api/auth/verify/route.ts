@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       request.headers.get("x-forwarded-for")?.split(",")[0] ||
       request.headers.get("x-real-ip") ||
       "unknown";
-    const rate = checkAuthRateLimit(`verify:${ip}`);
+    const rate = await checkAuthRateLimit(`verify:${ip}`);
     if (!rate.success) {
       return NextResponse.json(
         { error: "Too many verification attempts. Please try again later." },

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { orders, customers, products, coupons, stores, analyticsEvents } from "@/db/schema";
+import { orders, customers, products, coupons, stores, analyticsEvents, webhooks } from "@/db/schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { generateOrderNumber, formatPhoneNumber, generateWhatsAppLink, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { sendWhatsApp } from "@/lib/whatsapp";
+import { triggerWebhooks, WebhookEvent } from "@/lib/webhooks";
 
 class OrderRequestError extends Error {
   constructor(message: string, public readonly status: 400 | 403 | 404 | 409) {
@@ -310,6 +311,30 @@ Order placed through Sell Up.`;
         to: formatPhoneNumber(store.whatsappNumber),
         message: merchantWhatsAppMessage,
       }).catch((err) => console.error("Order WhatsApp notification failed:", err));
+    }
+
+    // Fire order.created webhook to subscribed endpoints. Never blocks the order response.
+    try {
+      const storeWebhooks = await db
+        .select({ id: webhooks.id, url: webhooks.url, events: webhooks.events, secret: webhooks.secret, isActive: webhooks.isActive })
+        .from(webhooks)
+        .where(and(eq(webhooks.storeId, validatedData.storeId), eq(webhooks.isActive, true)))
+        .limit(20);
+      await triggerWebhooks(
+        storeWebhooks,
+        WebhookEvent.ORDER_CREATED,
+        {
+          orderId: createdOrder.id,
+          orderNumber,
+          total: createdOrder.total,
+          status: createdOrder.status,
+          customerName: validatedData.customerName,
+          customerPhone: validatedData.customerPhone,
+        },
+        validatedData.storeId
+      ).catch((err) => console.error("Order webhook delivery failed:", err));
+    } catch {
+      // Webhook delivery must never fail the order.
     }
 
     return NextResponse.json(
