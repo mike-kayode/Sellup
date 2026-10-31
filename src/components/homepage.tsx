@@ -252,7 +252,7 @@ export function Homepage() {
           <div className="text-center lg:text-left">
             <span className="inline-flex items-center gap-2 rounded-full border border-[#b7ecd0] bg-white px-3.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#128C7E] shadow-sm sm:text-xs">
               <span className="h-2 w-2 rounded-full bg-[#25D366]" />
-              Built for Nigerian sellers
+              Built for Nigerian Businesses
             </span>
 
             <h1 className="mt-5 text-4xl font-extrabold leading-[1.05] tracking-tight text-slate-950 sm:text-5xl lg:text-6xl xl:text-[4.25rem]">
