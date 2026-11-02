@@ -31,7 +31,11 @@ export async function POST(request: NextRequest) {
     const normalizedEmail = email.trim().toLowerCase();
 
     const [store] = await db
-      .select({ id: businesses.id, storeName: businesses.storeName })
+      .select({
+        id: businesses.id,
+        storeName: businesses.storeName,
+        storeSlug: businesses.storeSlug,
+      })
       .from(businesses)
       .where(eq(businesses.storeSlug, storeSlug))
       .limit(1);
@@ -40,7 +44,7 @@ export async function POST(request: NextRequest) {
     }
     const storeId = store.id;
 
-    // Tenant-scoped lookup — generic response either way (no account leakage).
+    // Tenant-scoped lookup ï¿½ generic response either way (no account leakage).
     const [customer] = await db
       .select({ id: customers.id })
       .from(customers)

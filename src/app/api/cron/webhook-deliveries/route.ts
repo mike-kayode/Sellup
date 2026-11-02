@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { webhookDeliveries, webhooks } from "@/db/schema";
-import { eq, and, lt, sql } from "drizzle-orm";
+import { eq, and, inArray, lt } from "drizzle-orm";
 import crypto from "crypto";
 
 const BATCH_SIZE = 25;
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const webhookRows = await db
       .select({ id: webhooks.id, secret: webhooks.secret, status: webhooks.status })
       .from(webhooks)
-      .where(sql`${webhooks.id} IN (${sql.raw(placeholders)})`, ...webhookIds);
+      .where(inArray(webhooks.id, webhookIds));
     const webhookMap = new Map(webhookRows.map((w) => [w.id, w]));
 
     let delivered = 0;
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
             attempt,
             lastHttpCode: undefined,
             lastError: err?.message ?? String(err),
-            nextAttemptAt: nextAttempt,
+            ...(nextAttempt ? { nextAttemptAt: nextAttempt } : {}),
           })
           .where(eq(webhookDeliveries.id, d.id));
         failed++;

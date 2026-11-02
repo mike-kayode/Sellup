@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       id: apiKeys.id,
       name: apiKeys.name,
       prefix: apiKeys.prefix,
-      lastUsed: apiKeys.lastUsed,
+      lastUsedAt: apiKeys.lastUsedAt,
       createdAt: apiKeys.createdAt,
     }).from(apiKeys).orderBy(desc(apiKeys.createdAt)).limit(50);
 
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       prefix,
       hashedKey,
       isActive: true,
-      lastUsed: null,
+      lastUsedAt: null,
     }).returning();
 
     const clientInfo = getClientInfo(request);

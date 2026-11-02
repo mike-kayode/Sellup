@@ -16,7 +16,12 @@ export async function GET(
 
     // Find the store by slug
     const storeResult = await db
-      .select({ id: stores.id, isPublished: stores.isPublished })
+      .select({
+        id: stores.id,
+        isPublished: stores.isPublished,
+        storeName: stores.storeName,
+        whatsappNumber: stores.whatsappNumber,
+      })
       .from(stores)
       .where(eq(stores.storeSlug, slug))
       .limit(1);

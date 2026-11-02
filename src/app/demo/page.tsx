@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, MessageCircle, ShoppingBag } from "lucide-react";
+import { ArrowRight, MessageCircle, ShoppingBag } from "@/components/icons/lucide-icons";
 import { MarketingHero, MarketingShell } from "@/components/marketing-shell";
 
 export default function DemoPage() {

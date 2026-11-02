@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, MessageCircle, Settings, Store } from "lucide-react";
+import { Check, MessageCircle, Settings, Store } from "@/components/icons/lucide-icons";
 import { MarketingCta, MarketingHero, MarketingShell } from "@/components/marketing-shell";
 
 const steps = [

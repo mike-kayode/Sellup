@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- image optimizer is unavailable on the standalone server */
 import Link from "next/link";
-import { ArrowRight, Users, Zap } from "lucide-react";
+import { ArrowRight, Users, Zap } from "@/components/icons/lucide-icons";
 import type { ReactNode } from "react";
 
 const SHOWCASE_IMAGE =

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { MarketingFooter } from "./marketing-footer";
-import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { MarketingNav } from "./marketing-nav";
 
@@ -32,7 +31,7 @@ export function MarketingCta() {
     <section className="bg-[#25D366] px-6 py-20 text-center text-white">
       <h2 className="text-3xl font-bold sm:text-4xl">Launch your store today.</h2>
       <p className="mx-auto mt-4 max-w-2xl text-white/90">Join thousands of Nigerian businesses growing with Sell Up.</p>
-      <Link href="/register" className="mt-8 inline-flex items-center gap-2 rounded-3xl bg-white px-8 py-4 font-semibold text-[#25D366] shadow-lg hover:bg-slate-100">Start Your Free Store <ArrowRight size={18} /></Link>
+      <Link href="/register" className="mt-8 inline-flex items-center gap-2 rounded-3xl bg-white px-8 py-4 font-semibold text-[#25D366] shadow-lg hover:bg-slate-100">Start Your Free Store <span aria-hidden="true">→</span></Link>
     </section>
   );
 }

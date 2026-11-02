@@ -15,7 +15,10 @@ const impersonateSchema = z.object({
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
   if (auth.error) return auth.error;
-  const { user } = auth!;
+  if (!auth.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { user } = auth;
 
   // Only superadmin can impersonate.
   if (user.role !== "superadmin") {
@@ -90,4 +93,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to create impersonation session" }, { status: 500 });
   }
 }
-

@@ -9,7 +9,10 @@ import { createAuditLog } from "@/lib/admin-audit";
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
   if (auth.error) return auth.error;
-  const { user } = auth!;
+  if (!auth.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { user } = auth;
 
   if (user.role !== "superadmin" && user.role !== "admin" && user.role !== "finance_manager") {
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
@@ -72,4 +75,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Dunning process failed" }, { status: 500 });
   }
 }
-

@@ -18,7 +18,10 @@ const taxSettingsSchema = z.object({
 export async function GET(request: NextRequest) {
   const auth = await requireMerchant(request);
   if (auth.error) return auth.error;
-  const { merchant } = auth!;
+  if (!auth.merchant) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { merchant } = auth;
 
   try {
     const [row] = await db
@@ -35,7 +38,7 @@ export async function GET(request: NextRequest) {
           taxRate: "0.0000",
           taxRegistered: false,
           taxNumber: "",
-          taxCountry: merchant.country || "NG",
+          taxCountry: "NG",
         },
       });
     }
@@ -50,7 +53,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireMerchant(request);
   if (auth.error) return auth.error;
-  const { merchant } = auth!;
+  if (!auth.merchant) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { merchant } = auth;
 
   try {
     const body = await request.json();
@@ -68,7 +74,7 @@ export async function POST(request: NextRequest) {
       taxRate: taxRate ?? "0.0000",
       taxRegistered: taxRegistered ?? false,
       taxNumber: taxNumber ?? null,
-      taxCountry: taxCountry ?? merchant.country || "NG",
+      taxCountry: taxCountry ?? "NG",
       updatedAt: new Date(),
     };
 
@@ -111,4 +117,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to update tax settings" }, { status: 500 });
   }
 }
-

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BookOpen, HelpCircle, ShieldCheck } from "lucide-react";
+import { ArrowRight, BookOpen, HelpCircle, ShieldCheck } from "@/components/icons/lucide-icons";
 import { MarketingCta, MarketingHero, MarketingShell } from "@/components/marketing-shell";
 
 const resources = [

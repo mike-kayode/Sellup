@@ -1819,64 +1819,164 @@ export const referrals = pgTable(
     index("referrals_status_idx").on(table.status),
   ]
 );
- 
-  
- / /   T a x / V A T   s e t t i n g s   p e r   s t o r e   ( P h a s e   9 ) .  
- e x p o r t   c o n s t   t a x S e t t i n g s   =   p g T a b l e (  
-     " t a x _ s e t t i n g s " ,  
-     {  
-         i d :   u u i d ( " i d " ) . p r i m a r y K e y ( ) . d e f a u l t R a n d o m ( ) ,  
-         s t o r e I d :   u u i d ( " s t o r e _ i d " )  
-             . n o t N u l l ( )  
-             . r e f e r e n c e s ( ( )   = >   b u s i n e s s e s . i d ,   {   o n D e l e t e :   " c a s c a d e "   } ) ,  
-         t a x N a m e :   v a r c h a r ( " t a x _ n a m e " ,   {   l e n g t h :   5 0   } ) . n o t N u l l ( ) . d e f a u l t ( " V A T " ) ,  
-         t a x R a t e :   d e c i m a l ( " t a x _ r a t e " ,   {   p r e c i s i o n :   5 ,   s c a l e :   4   } ) . n o t N u l l ( ) . d e f a u l t ( " 0 . 0 0 0 0 " ) ,  
-         t a x R e g i s t e r e d :   b o o l e a n ( " t a x _ r e g i s t e r e d " ) . n o t N u l l ( ) . d e f a u l t ( f a l s e ) ,  
-         t a x N u m b e r :   v a r c h a r ( " t a x _ n u m b e r " ,   {   l e n g t h :   1 0 0   } ) ,  
-         t a x C o u n t r y :   v a r c h a r ( " t a x _ c o u n t r y " ,   {   l e n g t h :   1 0   } ) . n o t N u l l ( ) . d e f a u l t ( " N G " ) ,  
-         c r e a t e d A t :   t i m e s t a m p ( " c r e a t e d _ a t " ,   {   w i t h T i m e z o n e :   t r u e   } ) . n o t N u l l ( ) . d e f a u l t N o w ( ) ,  
-         u p d a t e d A t :   t i m e s t a m p ( " u p d a t e d _ a t " ,   {   w i t h T i m e z o n e :   t r u e   } ) . n o t N u l l ( ) . d e f a u l t N o w ( ) ,  
-     } ,  
-     ( t a b l e )   = >   [  
-         u n i q u e ( " t a x _ s e t t i n g s _ s t o r e _ i d _ u n i q u e " ) . o n ( t a b l e . s t o r e I d ) ,  
-         i n d e x ( " t a x _ s e t t i n g s _ s t o r e _ i d _ i d x " ) . o n ( t a b l e . s t o r e I d ) ,  
-     ]  
- ) ;  
-  
- / /   E x c h a n g e   r a t e s   f o r   m u l t i - c u r r e n c y   d i s p l a y   ( P h a s e   9 ) .  
- e x p o r t   c o n s t   e x c h a n g e R a t e s   =   p g T a b l e (  
-     " e x c h a n g e _ r a t e s " ,  
-     {  
-         i d :   u u i d ( " i d " ) . p r i m a r y K e y ( ) . d e f a u l t R a n d o m ( ) ,  
-         s t o r e I d :   u u i d ( " s t o r e _ i d " )  
-             . n o t N u l l ( )  
-             . r e f e r e n c e s ( ( )   = >   b u s i n e s s e s . i d ,   {   o n D e l e t e :   " c a s c a d e "   } ) ,  
-         f r o m C u r r e n c y :   v a r c h a r ( " f r o m _ c u r r e n c y " ,   {   l e n g t h :   1 0   } ) . n o t N u l l ( ) ,  
-         t o C u r r e n c y :   v a r c h a r ( " t o _ c u r r e n c y " ,   {   l e n g t h :   1 0   } ) . n o t N u l l ( ) ,  
-         r a t e :   d e c i m a l ( " r a t e " ,   {   p r e c i s i o n :   2 0 ,   s c a l e :   1 0   } ) . n o t N u l l ( ) . d e f a u l t ( " 1 . 0 0 0 0 0 0 0 0 0 0 " ) ,  
-         s o u r c e :   v a r c h a r ( " s o u r c e " ,   {   l e n g t h :   5 0   } ) . n o t N u l l ( ) . d e f a u l t ( " m a n u a l " ) ,  
-         u p d a t e d A t :   t i m e s t a m p ( " u p d a t e d _ a t " ,   {   w i t h T i m e z o n e :   t r u e   } ) . n o t N u l l ( ) . d e f a u l t N o w ( ) ,  
-     } ,  
-     ( t a b l e )   = >   [  
-         u n i q u e ( " e x c h a n g e _ r a t e s _ s t o r e _ f r o m _ t o _ u n i q u e " ) . o n ( t a b l e . s t o r e I d ,   t a b l e . f r o m C u r r e n c y ,   t a b l e . t o C u r r e n c y ) ,  
-         i n d e x ( " e x c h a n g e _ r a t e s _ s t o r e _ i d _ i d x " ) . o n ( t a b l e . s t o r e I d ) ,  
-     ]  
- ) ;  
-  
- / /   T a x   s e t t i n g s   r e l a t i o n s .  
- e x p o r t   c o n s t   t a x S e t t i n g s R e l a t i o n s   =   r e l a t i o n s ( t a x S e t t i n g s ,   ( {   o n e   } )   = >   ( {  
-     s t o r e :   o n e ( b u s i n e s s e s ,   {  
-         f i e l d s :   [ t a x S e t t i n g s . s t o r e I d ] ,  
-         r e f e r e n c e s :   [ b u s i n e s s e s . i d ] ,  
-     } ) ,  
- } ) ) ;  
-  
- / /   E x c h a n g e   r a t e s   r e l a t i o n s .  
- e x p o r t   c o n s t   e x c h a n g e R a t e s R e l a t i o n s   =   r e l a t i o n s ( e x c h a n g e R a t e s ,   ( {   o n e   } )   = >   ( {  
-     s t o r e :   o n e ( b u s i n e s s e s ,   {  
-         f i e l d s :   [ e x c h a n g e R a t e s . s t o r e I d ] ,  
-         r e f e r e n c e s :   [ b u s i n e s s e s . i d ] ,  
-     } ) ,  
- } ) ) ;  
-  
- 
+
+
+// Tax/VAT settings per store (Phase 9).
+export const taxSettings = pgTable(
+  "tax_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    taxName: varchar("tax_name", { length: 50 }).notNull().default("VAT"),
+    taxRate: decimal("tax_rate", { precision: 5, scale: 4 }).notNull().default("0.0000"),
+    taxRegistered: boolean("tax_registered").notNull().default(false),
+    taxNumber: varchar("tax_number", { length: 100 }),
+    taxCountry: varchar("tax_country", { length: 10 }).notNull().default("NG"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("tax_settings_store_id_unique").on(table.storeId),
+    index("tax_settings_store_id_idx").on(table.storeId),
+  ]
+);
+
+// Exchange rates for multi-currency display (Phase 9).
+export const exchangeRates = pgTable(
+  "exchange_rates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    fromCurrency: varchar("from_currency", { length: 10 }).notNull(),
+    toCurrency: varchar("to_currency", { length: 10 }).notNull(),
+    rate: decimal("rate", { precision: 20, scale: 10 }).notNull().default("1.0000000000"),
+    source: varchar("source", { length: 50 }).notNull().default("manual"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("exchange_rates_store_from_to_unique").on(table.storeId, table.fromCurrency, table.toCurrency),
+    index("exchange_rates_store_id_idx").on(table.storeId),
+  ]
+);
+
+// Tax settings relations.
+export const taxSettingsRelations = relations(taxSettings, ({ one }) => ({
+  store: one(businesses, {
+    fields: [taxSettings.storeId],
+    references: [businesses.id],
+  }),
+}));
+
+// Exchange rates relations.
+export const exchangeRatesRelations = relations(exchangeRates, ({ one }) => ({
+  store: one(businesses, {
+    fields: [exchangeRates.storeId],
+    references: [businesses.id],
+  }),
+}));
+
+export const aiProviders = pgTable(
+  "ai_providers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 100 }).notNull(),
+    endpoint: varchar("endpoint", { length: 500 }),
+    encryptedApiKey: text("encrypted_api_key"),
+    isActive: boolean("is_active").notNull().default(true),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("ai_providers_is_active_idx").on(table.isActive),
+    index("ai_providers_default_idx").on(table.isDefault),
+  ]
+);
+
+export const aiQuotas = pgTable(
+  "ai_quotas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    monthlyTokenLimit: integer("monthly_token_limit").notNull().default(1000000),
+    monthlyCostCap: decimal("monthly_cost_cap", {
+      precision: 12,
+      scale: 4,
+    })
+      .notNull()
+      .default("0.0000"),
+    tokensUsedThisMonth: integer("tokens_used_this_month")
+      .notNull()
+      .default(0),
+    costUsedThisMonth: decimal("cost_used_this_month", {
+      precision: 12,
+      scale: 4,
+    })
+      .notNull()
+      .default("0.0000"),
+    monthStart: timestamp("month_start", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("ai_quotas_store_id_unique").on(table.storeId),
+    index("ai_quotas_store_id_idx").on(table.storeId),
+  ]
+);
+
+export const aiGenerations = pgTable(
+  "ai_generations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    provider: varchar("provider", { length: 100 }).notNull(),
+    feature: varchar("feature", { length: 50 }).notNull(),
+    prompt: text("prompt").notNull(),
+    response: text("response"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    costUsd: decimal("cost_usd", { precision: 12, scale: 6 }),
+    status: varchar("status", { length: 30 }).notNull().default("pending"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("ai_generations_store_id_idx").on(table.storeId),
+    index("ai_generations_feature_idx").on(table.feature),
+    index("ai_generations_created_at_idx").on(table.createdAt),
+  ]
+);
+
+export const aiQuotasRelations = relations(aiQuotas, ({ one }) => ({
+  store: one(businesses, {
+    fields: [aiQuotas.storeId],
+    references: [businesses.id],
+  }),
+}));
+
+export const aiGenerationsRelations = relations(aiGenerations, ({ one }) => ({
+  store: one(businesses, {
+    fields: [aiGenerations.storeId],
+    references: [businesses.id],
+  }),
+}));

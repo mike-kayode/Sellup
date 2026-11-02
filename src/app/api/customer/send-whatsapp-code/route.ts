@@ -7,6 +7,7 @@ import { checkAuthRateLimit } from "@/lib/rate-limit";
 import { hashToken } from "@/lib/customer-auth";
 import { sendWhatsApp } from "@/lib/whatsapp";
 import { formatPhoneNumber } from "@/lib/utils";
+import { generateVerificationCode } from "@/lib/verification";
 
 const schema = z.object({
   storeSlug: z.string().min(1),

@@ -61,7 +61,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
   if (auth.error) return auth.error;
-  const { user } = auth!;
+  if (!auth.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { user } = auth;
 
   try {
     const body = await request.json();
@@ -131,4 +134,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to moderate content" }, { status: 500 });
   }
 }
-

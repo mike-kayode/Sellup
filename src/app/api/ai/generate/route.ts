@@ -61,7 +61,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid input", details: error.flatten() }, { status: 400 });
     }
     console.error("AI generate error:", error);
-    return NextResponse.json({ error: error.message || "Failed to generate" }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to generate" },
+      { status: 500 }
+    );
   }
 }
-

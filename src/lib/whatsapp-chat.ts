@@ -8,9 +8,6 @@
  * - Analytics: record whatsapp_click events into analytics_events.
  */
 
-import { db } from "@/db";
-import { analyticsEvents } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { formatPhoneNumber } from "@/lib/utils";
 
 export interface WhatsAppAgent {
@@ -149,7 +146,7 @@ export function evaluateChatButton(
  * Record a whatsapp_click analytics event. Fail-closed (never throws).
  */
 export async function recordWhatsAppClick(input: {
-  storeId: string;
+  storeSlug: string;
   page: string;
   productId?: string | null;
   device: "mobile" | "desktop" | "tablet";
@@ -158,19 +155,10 @@ export async function recordWhatsAppClick(input: {
   productUrl?: string | null;
 }): Promise<void> {
   try {
-    await db.insert(analyticsEvents).values({
-      storeId: input.storeId,
-      productId: input.productId ?? null,
-      orderId: null,
-      eventName: "whatsapp_click",
-      sessionId: undefined,
-      metadata: {
-        page: input.page,
-        device: input.device,
-        product: input.productName ?? null,
-        price: input.productPrice ?? null,
-        url: input.productUrl ?? null,
-      },
+    await fetch("/api/analytics/whatsapp-click", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
     });
   } catch {
     // Analytics must never break the chat flow.

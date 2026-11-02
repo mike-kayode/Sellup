@@ -63,7 +63,7 @@ export function PremiumProductCard({
       name: product.name,
       price: product.price,
       quantity: 1,
-      image,
+      image: image ?? undefined,
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);

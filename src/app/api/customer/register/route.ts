@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Derive the store from the slug (validated — never trust a raw store id).
+    // Derive the store from the slug (validated ï¿½ never trust a raw store id).
     const [store] = await db
       .select({ id: businesses.id, storeName: businesses.storeName })
       .from(businesses)
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
           .values({
             storeId,
             name,
-            phone: rawPhone ?? null,
+            phone: rawPhone ?? "",
             email: rawEmail,
             passwordHash: "", // set below if password provided
             isEmailVerified: false,

@@ -95,7 +95,14 @@ export async function POST(request: NextRequest) {
     let discountMinor = 0;
     let appliedCouponCode: string | undefined;
     let customerId = "";
-    let createdOrder: { id: string; orderNumber: string; total: string } | undefined;
+    let createdOrder:
+      | {
+          id: string;
+          orderNumber: string;
+          total: string;
+          status: string | null;
+        }
+      | undefined;
     const orderItems: Array<{
       productId: string;
       name: string;
@@ -223,7 +230,12 @@ export async function POST(request: NextRequest) {
         paymentStatus: "pending",
         notes: validatedData.notes,
         couponCode: appliedCouponCode,
-      }).returning({ id: orders.id, orderNumber: orders.orderNumber, total: orders.total });
+      }).returning({
+        id: orders.id,
+        orderNumber: orders.orderNumber,
+        total: orders.total,
+        status: orders.status,
+      });
       createdOrder = newOrder;
 
       await tx.update(customers).set({
@@ -240,6 +252,10 @@ export async function POST(request: NextRequest) {
       });
       return calculatedTotalMinor;
     });
+
+    if (!createdOrder) {
+      throw new Error("Order creation did not return an order");
+    }
 
     // Format WhatsApp message (sent TO the business owner)
     const orderDetails = orderItems
@@ -316,12 +332,39 @@ Order placed through Sell Up.`;
     // Fire order.created webhook to subscribed endpoints. Never blocks the order response.
     try {
       const storeWebhooks = await db
-        .select({ id: webhooks.id, url: webhooks.url, events: webhooks.events, secret: webhooks.secret, isActive: webhooks.isActive })
+        .select({
+          id: webhooks.id,
+          url: webhooks.url,
+          events: webhooks.events,
+          secret: webhooks.secret,
+          status: webhooks.status,
+          createdAt: webhooks.createdAt,
+        })
         .from(webhooks)
-        .where(and(eq(webhooks.storeId, validatedData.storeId), eq(webhooks.isActive, true)))
+        .where(
+          and(
+            eq(webhooks.storeId, validatedData.storeId),
+            eq(webhooks.status, "active")
+          )
+        )
         .limit(20);
       await triggerWebhooks(
-        storeWebhooks,
+        storeWebhooks.map((webhook) => ({
+          id: webhook.id,
+          storeId: validatedData.storeId,
+          url: webhook.url,
+          events: Array.isArray(webhook.events)
+            ? webhook.events.filter(
+                (event): event is WebhookEvent =>
+                  Object.values(WebhookEvent).some(
+                    (supportedEvent) => supportedEvent === event
+                  )
+              )
+            : [],
+          isActive: webhook.status === "active",
+          createdAt: webhook.createdAt,
+          secret: webhook.secret ?? undefined,
+        })),
         WebhookEvent.ORDER_CREATED,
         {
           orderId: createdOrder.id,

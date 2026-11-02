@@ -21,7 +21,11 @@ export function generateOrderNumber(): string {
 }
 
 export function formatCurrency(amount: string | number): string {
-  return formatMoney(amount, { currency: "NGN", locale: "en-NG" });
+  const value = typeof amount === "string" ? Number(amount) : amount;
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+  }).format(value);
 }
 
 export function toMinorUnits(amount: string | number): number {

@@ -371,12 +371,13 @@ export async function setAiQuota(input: {
     now.getMonth(),
     1
   );
+  const monthlyCostCap = (input.monthlyCostCap ?? 10).toFixed(4);
   await db
     .insert(aiQuotas)
     .values({
       storeId: input.storeId,
       monthlyTokenLimit: input.monthlyTokenLimit ?? 1_000_000,
-      monthlyCostCap: input.monthlyCostCap ?? "10.0000",
+      monthlyCostCap,
       tokensUsedThisMonth: 0,
       costUsedThisMonth: "0.0000",
       monthStart,
@@ -387,7 +388,9 @@ export async function setAiQuota(input: {
         monthlyTokenLimit:
           input.monthlyTokenLimit ?? sql`${aiQuotas.monthlyTokenLimit}`,
         monthlyCostCap:
-          input.monthlyCostCap ?? sql`${aiQuotas.monthlyCostCap}`,
+          input.monthlyCostCap === undefined
+            ? sql`${aiQuotas.monthlyCostCap}`
+            : monthlyCostCap,
         updatedAt: new Date(),
       },
     });
@@ -414,7 +417,7 @@ export async function upsertProvider(input: {
   isActive?: boolean;
   isDefault?: boolean;
 }): Promise<void> {
-  const existing = await db
+  const [existing] = await db
     .select({ id: aiProviders.id })
     .from(aiProviders)
     .where(eq(aiProviders.name, input.name))
@@ -422,18 +425,17 @@ export async function upsertProvider(input: {
   const encrypted = input.apiKey
     ? encryptSensitiveDataV2(input.apiKey)
     : undefined;
-  const values: Record<string, any> = {
+  const values = {
     name: input.name,
     endpoint: input.endpoint ?? null,
     isActive: input.isActive ?? true,
     isDefault: input.isDefault ?? false,
     updatedAt: new Date(),
+    ...(encrypted ? { encryptedApiKey: encrypted } : {}),
   };
-  if (encrypted) values.encryptedApiKey = encrypted;
   if (existing) {
     await db.update(aiProviders).set(values).where(eq(aiProviders.id, existing.id));
   } else {
     await db.insert(aiProviders).values(values);
   }
 }
-

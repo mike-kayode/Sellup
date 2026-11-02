@@ -1,5 +1,5 @@
 /**
- * Sell Up merchant (store owner) authentication — Phase 1.
+ * Sell Up merchant (store owner) authentication ï¿½ Phase 1.
  *
  * Derives the merchant's store from the authenticated Supabase session (never
  * from a client-supplied store id). Fail closed: any lookup failure denies.
@@ -19,10 +19,9 @@ export interface MerchantContext {
   storeName: string;
 }
 
-export interface MerchantAuthResult {
-  merchant: MerchantContext | null;
-  error: NextResponse | null;
-}
+export type MerchantAuthResult =
+  | { merchant: MerchantContext; error: null }
+  | { merchant: null; error: NextResponse };
 
 export async function requireMerchant(
   request: NextRequest

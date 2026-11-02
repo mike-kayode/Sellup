@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- image optimizer is unavailable on the standalone server */
 import Link from "next/link";
-import { ArrowLeft, MessageCircle, ShieldCheck, Truck } from "lucide-react";
+import { ArrowLeft, MessageCircle, ShieldCheck, Truck } from "@/components/icons/lucide-icons";
 import { formatCurrency } from "@/lib/utils";
 
 /**

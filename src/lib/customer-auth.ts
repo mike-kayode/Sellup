@@ -18,7 +18,7 @@ import {
   customerTokens,
   businesses,
 } from "@/db/schema";
-import { eq, and, isNull, gte, lt, sql } from "drizzle-orm";
+import { eq, and, inArray, isNull, gte, lt } from "drizzle-orm";
 import { hashPassword, comparePassword } from "@/lib/security";
 
 export const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -282,9 +282,9 @@ export async function revokeSessionByToken(
 /** Cleanup expired sessions (bounded, for cron). Returns count removed. */
 export async function cleanupExpiredSessions(limit = 1000): Promise<number> {
   const now = new Date();
-  await db
-    .update(customerSessions)
-    .set({ revokedAt: new Date() })
+  const expiredSessions = await db
+    .select({ id: customerSessions.id })
+    .from(customerSessions)
     .where(
       and(
         isNull(customerSessions.revokedAt),
@@ -292,17 +292,13 @@ export async function cleanupExpiredSessions(limit = 1000): Promise<number> {
       )
     )
     .limit(limit);
-  // Return a best-effort count.
-  const [result] = await db
-    .select({ count: sql`count(*)`.as("count") })
-    .from(customerSessions)
-    .where(
-      and(
-        isNull(customerSessions.revokedAt),
-        lt(customerSessions.expiresAt, now)
-      )
-    );
-  return Number(result?.count ?? 0);
+  if (expiredSessions.length === 0) return 0;
+
+  await db
+    .update(customerSessions)
+    .set({ revokedAt: new Date() })
+    .where(inArray(customerSessions.id, expiredSessions.map(({ id }) => id)));
+  return expiredSessions.length;
 }
 
 /** Issue a short-lived customer token (password reset / verify). */
@@ -334,7 +330,7 @@ export async function consumeCustomerToken(input: {
   type: string;
   token: string;
 }): Promise<boolean> {
-  const tokenHash = hashToken(token);
+  const tokenHash = hashToken(input.token);
   const now = new Date();
   const [row] = await db
     .select({ id: customerTokens.id, usedAt: customerTokens.usedAt })
@@ -391,4 +387,3 @@ export async function resolveStoreSlug(storeId: string): Promise<string | null> 
     .limit(1);
   return row?.storeSlug ?? null;
 }
-

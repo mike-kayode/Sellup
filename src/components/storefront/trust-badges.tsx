@@ -15,10 +15,10 @@ import {
   Lock,
   Gift,
   Headphones,
-  type IconType,
+  type LucideIcon,
 } from "lucide-react";
 
-const ICON_MAP: Record<string, IconType> = {
+const ICON_MAP: Record<string, LucideIcon> = {
   truck: Truck,
   shield: ShieldCheck,
   medal: Medal,

@@ -12,10 +12,9 @@ export interface AdminUser {
   role: string;
 }
 
-export interface AuthResult {
-  user: AdminUser | null;
-  error: NextResponse | null;
-}
+export type AuthResult =
+  | { user: null; error: NextResponse }
+  | { user: AdminUser; error: NextResponse | null };
 
 const ADMIN_ROLES = new Set(["superadmin", "admin", "platform_admin", "support_agent", "finance_manager", "content_manager", "moderator", "developer", "analyst"]);
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Check } from "@/components/icons/lucide-icons";
 import { MarketingHero, MarketingShell } from "@/components/marketing-shell";
 
 const plans = [

@@ -8,7 +8,7 @@ import {
   TrendingUp,
   Users,
   Zap,
-} from "lucide-react";
+} from "@/components/icons/lucide-icons";
 import { MarketingCta, MarketingHero, MarketingShell } from "@/components/marketing-shell";
 import { WhatsAppIcon } from "@/components/icons/whatsapp";
 

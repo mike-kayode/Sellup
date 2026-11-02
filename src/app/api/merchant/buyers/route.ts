@@ -40,13 +40,12 @@ export async function GET(request: NextRequest) {
 
     const conditions = [eq(customers.storeId, merchant.storeId)];
     if (q) {
-      conditions.push(
-        or(
-          ilike(customers.name, `%${q}%`),
-          ilike(customers.email, `%${q}%`),
-          ilike(customers.phone, `%${q}%`)
-        )
+      const searchCondition = or(
+        ilike(customers.name, `%${q}%`),
+        ilike(customers.email, `%${q}%`),
+        ilike(customers.phone, `%${q}%`)
       );
+      if (searchCondition) conditions.push(searchCondition);
     }
     if (minSpent !== null && minSpent !== undefined)
       conditions.push(sql`${customers.totalSpent} >= ${minSpent}`);
@@ -169,5 +168,4 @@ export async function GET(request: NextRequest) {
 export async function POST() {
   return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }
-
 

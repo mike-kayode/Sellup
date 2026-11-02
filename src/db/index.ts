@@ -39,11 +39,29 @@ const globalForDb = globalThis as typeof globalThis & {
   __sellupPool?: Pool;
 };
 
-export const pool = globalForDb.__sellupPool ?? createPool();
+let initializedPool: Pool | undefined;
 
-if (process.env.NODE_ENV !== "production") {
-  globalForDb.__sellupPool = pool;
+function getPool(): Pool {
+  const instance =
+    initializedPool ?? globalForDb.__sellupPool ?? createPool();
+  initializedPool = instance;
+  if (process.env.NODE_ENV !== "production") {
+    globalForDb.__sellupPool = instance;
+  }
+  return instance;
 }
+
+export const pool = new Proxy({} as Pool, {
+  get(_target, property) {
+    if (property === "constructor") return Pool;
+    const instance = getPool();
+    const value = Reflect.get(instance, property, instance);
+    return typeof value === "function" ? value.bind(instance) : value;
+  },
+  set(_target, property, value) {
+    return Reflect.set(getPool(), property, value);
+  },
+}) as Pool;
 
 export const db = drizzle(pool);
 

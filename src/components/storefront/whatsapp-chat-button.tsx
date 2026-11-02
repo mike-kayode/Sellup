@@ -20,7 +20,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { messageCircle, send } from "lucide-react";
+import { MessageCircle, Send } from "lucide-react";
 import {
   evaluateChatButton,
   normaliseE164,
@@ -85,7 +85,7 @@ export function WhatsAppChatButton({
   const handleClick = useCallback(() => {
     if (!waUrl) return;
     recordWhatsAppClick({
-      storeId: store.storeSlug,
+      storeSlug: store.storeSlug,
       page,
       productId: undefined,
       device,
@@ -149,7 +149,7 @@ export function WhatsAppChatButton({
         role="status"
         aria-live="polite"
       >
-        <messageCircle className="w-4 h-4 text-[#25D366]" aria-hidden />
+        <MessageCircle className="w-4 h-4 text-[#25D366]" aria-hidden />
         {decision.message}
       </div>
 
@@ -173,7 +173,7 @@ export function WhatsAppChatButton({
           aria-hidden
           className="block"
         >
-          <path d={send} />
+          <Send width={size.f} height={size.f} aria-hidden />
         </svg>
         {decision.away && (
           <span className="absolute -right-1 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-red-500 border border-white text-[10px] font-bold text-white">

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MapPin, Phone, Sparkles, Mail } from "lucide-react";
+import { MapPin, Phone, Sparkles, Mail } from "@/components/icons/lucide-icons";
 import { WhatsAppIcon } from "@/components/icons/whatsapp";
 import type { businesses, products, categories } from "@/db/schema";
 import { CartButton } from "./cart-button";

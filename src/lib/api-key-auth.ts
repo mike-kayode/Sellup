@@ -55,11 +55,11 @@ export async function requireApiKey(
 
   let row: {
     id: string;
-    storeId: string;
+    storeId: string | null;
     name: string;
     scopes: unknown;
     prefix: string;
-    isActive: boolean;
+    isActive: boolean | null;
     expiresAt: Date | null;
   } | null = null;
   try {
@@ -84,7 +84,7 @@ export async function requireApiKey(
     };
   }
 
-  if (!row || !row.isActive) {
+  if (!row || !row.isActive || !row.storeId) {
     return {
       key: null,
       error: NextResponse.json({ error: "Forbidden" }, { status: 403 }),

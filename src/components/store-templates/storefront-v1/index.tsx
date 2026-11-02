@@ -2,7 +2,7 @@
 
 /** Storefront v1 — shared mobile template. Design locked. */
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,

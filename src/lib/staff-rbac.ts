@@ -1,5 +1,5 @@
 /**
- * Sell Up merchant staff RBAC — Phase 1.
+ * Sell Up merchant staff RBAC ï¿½ Phase 1.
  *
  * Staff roles (scoped to a single store/business):
  *   owner      - full control over the store
@@ -128,7 +128,7 @@ export async function getStaffMember(
       )
     )
     .limit(1);
-  if (!row || !row.isActive) return null;
+  if (!row || !row.isActive || !row.role) return null;
   return {
     id: row.id,
     storeId: row.storeId,

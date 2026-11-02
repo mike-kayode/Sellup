@@ -1,30 +1,70 @@
 import Link from "next/link";
-import { Clock, LayoutDashboard, Mail } from "lucide-react";
 import { MarketingHero, MarketingShell } from "@/components/marketing-shell";
 
 const cards = [
   {
-    icon: Mail,
+    icon: "mail",
     title: "Email",
     body: "For account, billing or store questions — our support team replies within one business day.",
     action: "support@sellup.ng",
     href: "mailto:support@sellup.ng",
   },
   {
-    icon: LayoutDashboard,
+    icon: "dashboard",
     title: "Merchant support",
     body: "Signed in already? Open a support ticket from your dashboard and track it to resolution.",
     action: "Go to your dashboard",
     href: "/dashboard",
   },
   {
-    icon: Clock,
+    icon: "clock",
     title: "Support hours",
     body: "Monday to Friday, 8:00 AM – 6:00 PM (WAT). Urgent payment issues are prioritised around the clock.",
     action: "See how it works",
     href: "/how-it-works",
   },
-];
+] as const;
+
+function ContactIcon({ name }: { name: (typeof cards)[number]["icon"] }) {
+  const paths = {
+    mail: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="m3 7 9 6 9-6" />
+      </>
+    ),
+    dashboard: (
+      <>
+        <rect x="3" y="3" width="8" height="8" rx="1" />
+        <rect x="13" y="3" width="8" height="5" rx="1" />
+        <rect x="13" y="10" width="8" height="11" rx="1" />
+        <rect x="3" y="13" width="8" height="8" rx="1" />
+      </>
+    ),
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ),
+  }[name];
+
+  return (
+    <svg
+      aria-hidden="true"
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {paths}
+    </svg>
+  );
+}
 
 export default function ContactPage() {
   return (
@@ -38,12 +78,11 @@ export default function ContactPage() {
       <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
         <div className="mx-auto grid max-w-6xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((card) => {
-            const Icon = card.icon;
             const external = card.href.startsWith("mailto:");
             const inner = (
               <>
                 <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#DCF8C6] text-[#128C7E]">
-                  <Icon size={22} />
+                  <ContactIcon name={card.icon} />
                 </div>
                 <h2 className="text-lg font-bold text-slate-950">
                   {card.title}

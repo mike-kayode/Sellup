@@ -3,7 +3,7 @@ import { businesses, products, categories } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ShoppingCart, MapPin, Phone } from "lucide-react";
+import { ShoppingCart, MapPin, Phone } from "@/components/icons/lucide-icons";
 import { WhatsAppIcon } from "@/components/icons/whatsapp";
 import { canUseFeature, normalizePlan } from "@/lib/entitlements";
 import { ShowcaseTemplate } from "@/components/store-templates/showcase";
