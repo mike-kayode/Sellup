@@ -1,4 +1,4 @@
-﻿import { MarketingNav } from "@/components/marketing-nav";
+import { MarketingNav } from "@/components/marketing-nav";
 import { Homepage } from "@/components/homepage";
 
 export const dynamic = "force-dynamic";

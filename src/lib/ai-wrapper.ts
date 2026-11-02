@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Sell Up provider-agnostic AI wrapper (Phase 8).
  *
  * Design principles:

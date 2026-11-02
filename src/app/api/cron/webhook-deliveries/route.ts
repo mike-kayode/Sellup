@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { webhookDeliveries, webhooks } from "@/db/schema";
 import { eq, and, inArray, lt } from "drizzle-orm";

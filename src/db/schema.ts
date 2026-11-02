@@ -1820,7 +1820,6 @@ export const referrals = pgTable(
   ]
 );
 
-
 // Tax/VAT settings per store (Phase 9).
 export const taxSettings = pgTable(
   "tax_settings",
@@ -1875,108 +1874,6 @@ export const taxSettingsRelations = relations(taxSettings, ({ one }) => ({
 export const exchangeRatesRelations = relations(exchangeRates, ({ one }) => ({
   store: one(businesses, {
     fields: [exchangeRates.storeId],
-    references: [businesses.id],
-  }),
-}));
-
-export const aiProviders = pgTable(
-  "ai_providers",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    name: varchar("name", { length: 100 }).notNull(),
-    endpoint: varchar("endpoint", { length: 500 }),
-    encryptedApiKey: text("encrypted_api_key"),
-    isActive: boolean("is_active").notNull().default(true),
-    isDefault: boolean("is_default").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    index("ai_providers_is_active_idx").on(table.isActive),
-    index("ai_providers_default_idx").on(table.isDefault),
-  ]
-);
-
-export const aiQuotas = pgTable(
-  "ai_quotas",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    storeId: uuid("store_id")
-      .notNull()
-      .references(() => businesses.id, { onDelete: "cascade" }),
-    monthlyTokenLimit: integer("monthly_token_limit").notNull().default(1000000),
-    monthlyCostCap: decimal("monthly_cost_cap", {
-      precision: 12,
-      scale: 4,
-    })
-      .notNull()
-      .default("0.0000"),
-    tokensUsedThisMonth: integer("tokens_used_this_month")
-      .notNull()
-      .default(0),
-    costUsedThisMonth: decimal("cost_used_this_month", {
-      precision: 12,
-      scale: 4,
-    })
-      .notNull()
-      .default("0.0000"),
-    monthStart: timestamp("month_start", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    unique("ai_quotas_store_id_unique").on(table.storeId),
-    index("ai_quotas_store_id_idx").on(table.storeId),
-  ]
-);
-
-export const aiGenerations = pgTable(
-  "ai_generations",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    storeId: uuid("store_id")
-      .notNull()
-      .references(() => businesses.id, { onDelete: "cascade" }),
-    provider: varchar("provider", { length: 100 }).notNull(),
-    feature: varchar("feature", { length: 50 }).notNull(),
-    prompt: text("prompt").notNull(),
-    response: text("response"),
-    inputTokens: integer("input_tokens"),
-    outputTokens: integer("output_tokens"),
-    costUsd: decimal("cost_usd", { precision: 12, scale: 6 }),
-    status: varchar("status", { length: 30 }).notNull().default("pending"),
-    error: text("error"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    index("ai_generations_store_id_idx").on(table.storeId),
-    index("ai_generations_feature_idx").on(table.feature),
-    index("ai_generations_created_at_idx").on(table.createdAt),
-  ]
-);
-
-export const aiQuotasRelations = relations(aiQuotas, ({ one }) => ({
-  store: one(businesses, {
-    fields: [aiQuotas.storeId],
-    references: [businesses.id],
-  }),
-}));
-
-export const aiGenerationsRelations = relations(aiGenerations, ({ one }) => ({
-  store: one(businesses, {
-    fields: [aiGenerations.storeId],
     references: [businesses.id],
   }),
 }));

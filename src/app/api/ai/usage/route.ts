@@ -1,4 +1,4 @@
-﻿
+
 import { NextRequest, NextResponse } from "next/server";
 import { requireMerchant } from "@/lib/merchant-auth";
 import { getAiUsage } from "@/lib/ai-wrapper";
