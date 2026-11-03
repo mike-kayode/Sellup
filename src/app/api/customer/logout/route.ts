@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       try {
         await revokeSessionByToken(storeId, cookieName, request.headers);
       } catch {
-        // ignore — cookie will still be cleared
+        // ignore â€” cookie will still be cleared
       }
     }
 

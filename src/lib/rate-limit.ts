@@ -5,7 +5,7 @@
  * the DB is unreachable (availability over strictness during an outage).
  *
  * checkRateLimit stays synchronous. checkAuthRateLimit,
- * checkApiRateLimit, checkSearchRateLimit are now async — await them.
+ * checkApiRateLimit, checkSearchRateLimit are now async â€” await them.
  */
 
 import { db } from "@/db";
