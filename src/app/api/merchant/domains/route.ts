@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
         status: domains.status,
         sslStatus: domains.sslStatus,
         verificationStatus: domains.verificationStatus,
+        disabledReason: domains.disabledReason,
         dnsCheckedAt: domains.dnsCheckedAt,
         connectedAt: domains.connectedAt,
         createdAt: domains.createdAt,

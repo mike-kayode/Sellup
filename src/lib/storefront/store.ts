@@ -6,12 +6,12 @@ import { randomBytes } from "crypto";
 import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  featureFlags,
   storeConfigs,
   storeConfigRevisions,
   storePreviewTokens,
 } from "@/db/schema";
 import { STOREFRONT_TEMPLATE_ID, type StoreConfig } from "./config";
+import { clearFeatureFlagCache, isFeatureEnabled } from "@/lib/feature-flags";
 
 export const STOREFRONT_V1_FLAG_KEY = "storefront_v1";
 export const PREVIEW_TOKEN_TTL_HOURS = 24;
@@ -24,29 +24,13 @@ export const PREVIEW_TOKEN_TTL_HOURS = 24;
  * everywhere, falling back to the legacy basic/showcase templates.
  * Result cached for 60s to avoid a query per storefront render.
  */
-let flagCache: { value: boolean; at: number } | null = null;
-
 export async function isStorefrontV1Enabled(): Promise<boolean> {
-  const now = Date.now();
-  if (flagCache && now - flagCache.at < 60_000) return flagCache.value;
-  try {
-    const rows = await db
-      .select({ isEnabled: featureFlags.isEnabled })
-      .from(featureFlags)
-      .where(eq(featureFlags.key, STOREFRONT_V1_FLAG_KEY))
-      .limit(1);
-    const value = rows.length === 0 ? true : rows[0].isEnabled !== false;
-    flagCache = { value, at: now };
-    return value;
-  } catch {
-    // Fail closed: on DB trouble keep the legacy template path.
-    return false;
-  }
+  return isFeatureEnabled(STOREFRONT_V1_FLAG_KEY, null, true);
 }
 
 /** Test/dev helper: drop the cached flag value. */
 export function resetStorefrontFlagCache(): void {
-  flagCache = null;
+  clearFeatureFlagCache(STOREFRONT_V1_FLAG_KEY);
 }
 
 /* --------------------------------- configs -------------------------------- */

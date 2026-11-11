@@ -87,6 +87,7 @@ export async function upsertUserRecord(input: {
       password: "", // Auth is delegated to Supabase; no app password stored
       fullName: input.fullName || input.email,
       phone: input.phone || null,
+      role: "merchant",
     })
     .returning();
   return inserted[0];

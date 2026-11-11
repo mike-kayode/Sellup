@@ -16,6 +16,9 @@ export enum EmailTemplate {
   PASSWORD_RESET = "password_reset",
   EMAIL_VERIFICATION = "email_verification",
   VERIFICATION_CODE = "verification_code",
+  SUPPORT_REPLY = "support_reply",
+  BILLING_PAST_DUE = "billing_past_due",
+  ANNOUNCEMENT = "announcement",
 }
 
 export interface EmailMessage {
@@ -78,6 +81,7 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
         html: emailContent,
         text: textContent,
       }),
+      signal: AbortSignal.timeout(8_000),
     });
 
     if (!response.ok) {
@@ -394,9 +398,51 @@ function buildTemplateBody(
         </div>
       `;
 
+    case EmailTemplate.SUPPORT_REPLY:
+      return `
+        <div class="header"><h1>Support ticket update</h1></div>
+        <div class="content">
+          <p>Hi ${escapeHtml(String(data.customerName || "there"))},</p>
+          <p>Our support team replied to your ticket: <strong>${escapeHtml(String(data.subject || "Support request"))}</strong></p>
+          <div class="card"><p>${escapeHtml(String(data.reply || "")).replace(/\n/g, "<br />")}</p></div>
+          <p>Sign in to your Sell Up account to continue the conversation.</p>
+        </div>
+      `;
+
+    case EmailTemplate.BILLING_PAST_DUE:
+      return `
+        <div class="header"><h1>Subscription payment due</h1></div>
+        <div class="content">
+          <p>Hi ${escapeHtml(String(data.customerName || "there"))},</p>
+          <p>The billing period for <strong>${escapeHtml(String(data.storeName || "your store"))}</strong> has ended, and its subscription is now past due.</p>
+          ${data.paymentUrl ? `<p><a class="button" href="${escapeHtml(String(data.paymentUrl))}">Retry payment</a></p>` : ""}
+          ${data.attempt ? `<p>This is renewal attempt ${escapeHtml(String(data.attempt))}.</p>` : ""}
+          <p>Please review your subscription and contact Sell Up support if you need help restoring service.</p>
+        </div>
+      `;
+
+    case EmailTemplate.ANNOUNCEMENT:
+      return `
+        <div class="header"><h1>${escapeHtml(String(data.title || "Sell Up announcement"))}</h1></div>
+        <div class="content">
+          <p>${escapeHtml(String(data.message || "")).replace(/\n/g, "<br />")}</p>
+          ${data.preferencesUrl ? `<p><a href="${escapeHtml(String(data.preferencesUrl))}">Manage notification preferences</a></p>` : ""}
+        </div>
+      `;
+
     default:
       return `<div class="content"><p>Email template not found.</p></div>`;
   }
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character] || character);
 }
 
 /**
@@ -594,6 +640,14 @@ export function renderEmailTemplate(
       `Verify your email: ${data.verificationLink}`,
     [EmailTemplate.VERIFICATION_CODE]: (data) =>
       `Your Sell Up verification code: ${data.code}`,
+    [EmailTemplate.SUPPORT_REPLY]: (data) =>
+      `Our support team replied to "${data.subject}".`,
+    [EmailTemplate.BILLING_PAST_DUE]: (data) =>
+      data.paymentUrl
+        ? `The subscription for ${data.storeName} is past due. Retry payment: ${data.paymentUrl}`
+        : `The subscription for ${data.storeName} is past due.`,
+    [EmailTemplate.ANNOUNCEMENT]: (data) =>
+      `${data.title}: ${data.message}`,
   };
 
 const renderer = templates[template];

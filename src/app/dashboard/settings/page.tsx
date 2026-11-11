@@ -3,7 +3,11 @@
 import { useState, useEffect } from "react";
 import { SettingsIcon, LogOut, CreditCard, Mail, Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import {
+  clearBrowserAdminImpersonation,
+  getBrowserAdminImpersonation,
+  getSupabaseClient,
+} from "@/lib/supabase/client";
 import { isPaidPlan, normalizePlan } from "@/lib/entitlements";
 
 interface Store {
@@ -17,6 +21,7 @@ interface PlanInfo {
   name: string;
   price: number;
   priceOnRequest?: boolean;
+  billingCycle?: string;
   tagline: string;
   features: string[];
 }
@@ -47,6 +52,12 @@ export default function SettingsPage() {
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [loadingPlan, setLoadingPlan] = useState(false);
+  const [promotionCode, setPromotionCode] = useState("");
+  const [announcementEmailOptOut, setAnnouncementEmailOptOut] = useState(false);
+  const [announcementWhatsAppOptOut, setAnnouncementWhatsAppOptOut] = useState(false);
+  const [savingNotificationPreferences, setSavingNotificationPreferences] = useState(false);
+  const [notificationNotice, setNotificationNotice] = useState("");
+  const [notificationError, setNotificationError] = useState("");
 
   async function getToken(): Promise<string | null> {
     const supabase = getSupabaseClient();
@@ -104,6 +115,57 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!selectedStoreId) return;
+    async function loadNotificationPreferences() {
+      try {
+        const token = await getToken();
+        if (!token) throw new Error("Please sign in again.");
+        const response = await fetch("/api/merchant/notification-preferences", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Failed to load preferences.");
+        setAnnouncementEmailOptOut(Boolean(result.preferences.emailOptOut));
+        setAnnouncementWhatsAppOptOut(Boolean(result.preferences.whatsappOptOut));
+      } catch (cause) {
+        setNotificationError(cause instanceof Error ? cause.message : "Failed to load preferences.");
+      }
+    }
+    void loadNotificationPreferences();
+    // getToken is stable for the page lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStoreId]);
+
+  async function saveNotificationPreferences() {
+    if (savingNotificationPreferences) return;
+    setSavingNotificationPreferences(true);
+    setNotificationError("");
+    setNotificationNotice("");
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Please sign in again.");
+      const response = await fetch("/api/merchant/notification-preferences", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          emailOptOut: announcementEmailOptOut,
+          whatsappOptOut: announcementWhatsAppOptOut,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to save preferences.");
+      setNotificationNotice("Announcement preferences saved.");
+    } catch (cause) {
+      setNotificationError(cause instanceof Error ? cause.message : "Failed to save preferences.");
+    } finally {
+      setSavingNotificationPreferences(false);
+    }
+  }
+
   const currentPlan = stores.find((s) => s.id === selectedStoreId)?.plan || "freemium";
   // Paystack (online card payments) is a paid-plan perk.
   const paidSubscriber = isPaidPlan(normalizePlan(currentPlan));
@@ -148,6 +210,7 @@ export default function SettingsPage() {
         body: JSON.stringify({
           storeId: selectedStoreId,
           plan: planId,
+          ...(promotionCode.trim() ? { promotionCode: promotionCode.trim() } : {}),
           // Subscription upgrades always run through the platform's configured
           // provider (Paystack) — independent of the customer-facing payment
           // method (WhatsApp ordering etc.) chosen on the Payments tab.
@@ -162,16 +225,38 @@ export default function SettingsPage() {
           "Online payments are not configured yet. Please contact support to upgrade."
         );
       } else {
-        alert("Payment initialization started. Please complete payment.");
+        alert(data.error || data.message || "Payment initialization started. Please complete payment.");
       }
     } catch (err) {
-      alert("Failed to initialize payment");
+      alert(err instanceof Error ? err.message : "Failed to initialize payment");
     } finally {
       setLoadingPlan(false);
     }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    const impersonation = getBrowserAdminImpersonation();
+    if (impersonation) {
+      try {
+        const response = await fetch("/api/impersonation/exit", {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${impersonation.accessToken}`,
+          },
+        });
+        if (!response.ok && response.status !== 401) {
+          const result = await response.json();
+          throw new Error(result.error || "Failed to end impersonation");
+        }
+        clearBrowserAdminImpersonation();
+        router.replace(`/my-admin/businesses/${impersonation.storeId}`);
+        router.refresh();
+      } catch {
+        window.alert("Could not end impersonation. Please retry from the banner.");
+      }
+      return;
+    }
+
     const supabase = getSupabaseClient();
     supabase.auth.signOut();
     router.push("/");
@@ -264,6 +349,16 @@ export default function SettingsPage() {
 
               {plans.length > 0 && (
                 <div>
+                  <label className="mb-3 block max-w-sm text-sm font-medium text-gray-700">
+                    Promotion code (optional)
+                    <input
+                      value={promotionCode}
+                      onChange={(event) => setPromotionCode(event.target.value)}
+                      maxLength={50}
+                      autoCapitalize="characters"
+                      className="input mt-1 w-full"
+                    />
+                  </label>
                   <p className="text-sm text-gray-600 mb-3">
                     Available Plans — click a plan to upgrade instantly with
                     Paystack
@@ -301,7 +396,7 @@ export default function SettingsPage() {
                             <span className="text-sm font-medium text-green-600">
                               {loadingPlan
                                 ? "Processing..."
-                                : `Upgrade — ₦${plan.price.toLocaleString()}/mo →`}
+                                : `Upgrade — ₦${plan.price.toLocaleString()}/${plan.billingCycle === "yearly" ? "yr" : "mo"} →`}
                             </span>
                           )}
                         </>
@@ -485,23 +580,20 @@ export default function SettingsPage() {
       {activeTab === "notifications" && (
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Notification Settings</h2>
-          <p className="text-gray-600 text-sm mb-4">Configure how you receive notifications</p>
-          
+          <p className="text-gray-600 text-sm mb-4">Choose whether Sell Up platform announcements can reach you by email or WhatsApp.</p>
+          {notificationError && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{notificationError}</p>}
+          {notificationNotice && <p role="status" className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-700">{notificationNotice}</p>}
           <div className="space-y-3">
-            {[
-              { label: "Email notifications", desc: "Get notified about new orders via email" },
-              { label: "SMS notifications", desc: "Get notified about new orders via SMS" },
-              { label: "WhatsApp updates", desc: "Receive order updates on WhatsApp" },
-            ].map((item, idx) => (
-              <label key={idx} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="checkbox" defaultChecked className="w-4 h-4 text-green-600" />
-                <div>
-                  <div className="font-medium text-gray-900">{item.label}</div>
-                  <div className="text-sm text-gray-600">{item.desc}</div>
-                </div>
-              </label>
-            ))}
+            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+              <input type="checkbox" checked={!announcementEmailOptOut} onChange={(event) => setAnnouncementEmailOptOut(!event.target.checked)} className="w-4 h-4 text-green-600" />
+              <span><span className="block font-medium text-gray-900">Email platform announcements</span><span className="text-sm text-gray-600">Email delivery can be disabled at any time.</span></span>
+            </label>
+            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+              <input type="checkbox" checked={!announcementWhatsAppOptOut} onChange={(event) => setAnnouncementWhatsAppOptOut(!event.target.checked)} className="w-4 h-4 text-green-600" />
+              <span><span className="block font-medium text-gray-900">WhatsApp platform announcements</span><span className="text-sm text-gray-600">Messages use the WhatsApp number on your store profile.</span></span>
+            </label>
           </div>
+          <button type="button" disabled={savingNotificationPreferences || !selectedStoreId} onClick={() => void saveNotificationPreferences()} className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:opacity-50">{savingNotificationPreferences ? "Saving…" : "Save preferences"}</button>
         </div>
       )}
 

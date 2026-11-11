@@ -210,6 +210,7 @@ export async function getCustomerSession(
       email: customers.email,
       isEmailVerified: customers.isEmailVerified,
       isWhatsAppVerified: customers.isWhatsAppVerified,
+      isBlocked: customers.isBlocked,
     })
     .from(customers)
     .where(
@@ -218,6 +219,19 @@ export async function getCustomerSession(
     .limit(1);
 
   if (!customer) return { session: null, customer: null };
+  if (customer.isBlocked) {
+    await db
+      .update(customerSessions)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(customerSessions.customerId, session.customerId),
+          eq(customerSessions.storeId, storeId),
+          isNull(customerSessions.revokedAt)
+        )
+      );
+    return { session: null, customer: null };
+  }
 
   return {
     session: {

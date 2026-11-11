@@ -38,6 +38,45 @@ export type Permission =
 
 export type RoleId = "superadmin" | "admin" | "platform_admin" | "support_agent" | "finance_manager" | "content_manager" | "moderator" | "developer" | "analyst";
 
+export const ALL_PERMISSIONS: Permission[] = [
+  "dashboard.read",
+  "businesses.read",
+  "businesses.manage",
+  "users.read",
+  "users.manage",
+  "orders.read",
+  "orders.manage",
+  "products.read",
+  "products.manage",
+  "subscriptions.read",
+  "subscriptions.manage",
+  "plans.read",
+  "plans.manage",
+  "payments.read",
+  "payments.manage",
+  "promotions.read",
+  "promotions.manage",
+  "support.read",
+  "support.manage",
+  "content.read",
+  "content.manage",
+  "domains.read",
+  "domains.manage",
+  "integrations.read",
+  "integrations.manage",
+  "features.read",
+  "features.manage",
+  "staff.read",
+  "staff.manage",
+  "roles.read",
+  "roles.manage",
+  "audit_logs.read",
+  "security.read",
+  "security.manage",
+  "system.read",
+  "system.manage",
+];
+
 export const ROLE_PERMISSIONS: Record<RoleId, Permission[]> = {
   superadmin: [
     "dashboard.read",
@@ -182,7 +221,14 @@ export const ROLE_PERMISSIONS: Record<RoleId, Permission[]> = {
   ],
 };
 
-export function hasPermission(role: string, permission: Permission): boolean {
+export function hasPermission(
+  role: string,
+  permission: Permission,
+  storedPermissions?: readonly string[]
+): boolean {
+  if (storedPermissions) {
+    return storedPermissions.includes(permission);
+  }
   const normalizedRole = role.toLowerCase() as RoleId;
   const permissions = ROLE_PERMISSIONS[normalizedRole];
   if (!permissions) return false;

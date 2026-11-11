@@ -25,6 +25,7 @@ export default function BillingPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [renewalNotice, setRenewalNotice] = useState("");
 
   async function loadData() {
     try {
@@ -72,6 +73,38 @@ export default function BillingPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("renewal") !== "complete") return;
+    const reference = params.get("reference");
+    const provider = params.get("provider");
+    if (!reference || (provider !== "paystack" && provider !== "flutterwave")) {
+      setRenewalNotice("The renewal payment could not be verified. Please contact support.");
+      return;
+    }
+    const renewalReference = reference;
+    const renewalProvider = provider;
+
+    let active = true;
+    async function verifyRenewal() {
+      try {
+        const query = new URLSearchParams({ reference: renewalReference, provider: renewalProvider });
+        const response = await fetch(`/api/billing/verify?${query}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Payment verification failed");
+        if (active) {
+          setRenewalNotice("Payment received. Your subscription has been renewed.");
+          window.history.replaceState(null, "", window.location.pathname);
+          await loadData();
+        }
+      } catch {
+        if (active) setRenewalNotice("Payment verification is still pending. Please refresh later or contact support.");
+      }
+    }
+    void verifyRenewal();
+    return () => { active = false; };
+  }, []);
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -87,6 +120,7 @@ export default function BillingPage() {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Subscription & Billing</h1>
         <p className="text-gray-600">Manage your subscription and billing details</p>
       </div>
+      {renewalNotice && <div role="status" className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-900">{renewalNotice}</div>}
 
       {stores.length === 0 ? (
         <div className="card p-12 text-center">

@@ -103,7 +103,7 @@ cp .env.example .env
 # Run database migrations (in order)
 psql -v ON_ERROR_STOP=1 --single-transaction -f drizzle/0000_dear_otto_octavius.sql
 psql -v ON_ERROR_STOP=1 --single-transaction -f drizzle/0001_wide_jean_grey.sql
-# ... apply all migrations in order (0000 through 0029)
+# ... apply all migration SQL files in order (0000 through 0045)
 # Or use the helper scripts:
 npm run db:phase1    # Phase 1 business migration
 npm run db:storefront # Storefront template system
@@ -176,7 +176,16 @@ PLATFORM_ADMIN_PASSWORD=...
 
 # ===== Cron (Phase 6) =====
 CRON_SECRET=your-secret-here
+
+# ===== Cloudflare custom-hostname TLS retries =====
+CLOUDFLARE_API_TOKEN=token-with-custom-hostname-edit-permission
+CLOUDFLARE_ZONE_ID=your-zone-id
 ```
+
+Subscription dunning does not charge stored cards: the hourly worker creates
+hosted Paystack/Flutterwave renewal links and sends reminders. Staff MFA
+enforcement should only be enabled after every active admin has verified an
+authenticator factor.
 
 
 ---
@@ -222,6 +231,9 @@ All database changes are additive, idempotent SQL files in `drizzle/00NN_name.sq
 | `0027_loyalty_referrals.sql` | Phase 7: loyalty/referrals |
 | `0028_ai_providers.sql` | Phase 8: AI providers/quotas/generations |
 | `0029_international_readiness.sql` | Phase 9: currency/timezone/locale/tax |
+| `0030_admin_overview.sql`–`0043_announcement_delivery_worker.sql` | Superadmin dashboard modules and bounded announcement delivery |
+| `0044_subscription_dunning.sql` | Bounded hosted-checkout renewal reminders |
+| `0045_admin_sessions.sql` | Admin session inventory and revocation |
 
 ### Schema Drift Check
 
@@ -278,6 +290,7 @@ curl -s -o /dev/null -w '%{http_code}' https://sellup.ng/api/health
 | Endpoint | Schedule | Purpose |
 |----------|----------|---------|
 | `/api/cron/webhook-deliveries` | Every minute | Drain due webhook deliveries (bounded batch) |
+| `/api/cron/subscription-dunning` | Hourly | Mark expired subscriptions past due and send due hosted renewal links (bounded batch) |
 | *(custom)* | Every 15 min | Re-check domain DNS verification |
 | *(custom)* | Daily | Abandoned cart recovery |
 | *(custom)* | Weekly | AI weekly digest |

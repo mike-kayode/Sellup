@@ -8,6 +8,7 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
   const [settings, setSettings] = useState({
     platformName: "Sell Up",
     supportEmail: "support@sellup.ng",
@@ -17,6 +18,8 @@ export default function AdminSettingsPage() {
     enableRegistration: true,
     requireEmailVerification: false,
     defaultPlan: "freemium",
+    trialDays: 14,
+    taxDefaults: { enabled: false, ratePercent: 0, inclusive: false },
   });
 
   useEffect(() => {
@@ -36,14 +39,15 @@ export default function AdminSettingsPage() {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.settings) {
-            setSettings((prev) => ({ ...prev, ...data.settings }));
-          }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load settings");
+        if (data.settings) {
+          setSettings((prev) => ({ ...prev, ...data.settings }));
         }
-      } catch {
-        // ignore
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error ? loadError.message : "Failed to load settings"
+        );
       } finally {
         setLoading(false);
       }
@@ -54,13 +58,15 @@ export default function AdminSettingsPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setError("");
+    setSaved(false);
     try {
       const supabase = getSupabaseClient();
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session?.access_token) return;
+      if (!session?.access_token) throw new Error("Not authenticated");
 
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
@@ -71,12 +77,14 @@ export default function AdminSettingsPage() {
         body: JSON.stringify(settings),
       });
 
-      if (res.ok) {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
-      }
-    } catch {
-      // ignore
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to save settings");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error ? saveError.message : "Failed to save settings"
+      );
     } finally {
       setSaving(false);
     }
@@ -97,6 +105,11 @@ export default function AdminSettingsPage() {
         <p className="text-gray-600 mt-2">Global configuration for Sell Up</p>
       </div>
 
+      {error && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+          {error}
+        </div>
+      )}
       <form onSubmit={handleSave} className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
         <div className="grid md:grid-cols-2 gap-6">
           <div>
@@ -163,6 +176,17 @@ export default function AdminSettingsPage() {
               <option value="pro">Pro</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Trial days</label>
+            <input
+              type="number"
+              min={0}
+              max={365}
+              value={settings.trialDays}
+              onChange={(e) => setSettings({ ...settings, trialDays: Number(e.target.value) })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            />
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -185,6 +209,58 @@ export default function AdminSettingsPage() {
             <span className="text-sm text-gray-700">Require email verification</span>
           </label>
         </div>
+
+        <fieldset className="space-y-4 rounded-lg border border-slate-200 p-4">
+          <legend className="px-2 text-sm font-medium text-gray-700">Default tax settings</legend>
+          <div className="flex flex-wrap gap-6">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={settings.taxDefaults.enabled}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    taxDefaults: { ...settings.taxDefaults, enabled: e.target.checked },
+                  })
+                }
+              />
+              <span className="text-sm text-gray-700">Enable tax by default</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={settings.taxDefaults.inclusive}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    taxDefaults: { ...settings.taxDefaults, inclusive: e.target.checked },
+                  })
+                }
+              />
+              <span className="text-sm text-gray-700">Tax inclusive</span>
+            </label>
+          </div>
+          <label className="block max-w-xs text-sm font-medium text-gray-700">
+            Tax rate (%)
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              value={settings.taxDefaults.ratePercent}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  taxDefaults: {
+                    ...settings.taxDefaults,
+                    ratePercent: Number(e.target.value),
+                  },
+                })
+              }
+              className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2"
+            />
+          </label>
+        </fieldset>
 
         <div className="flex items-center gap-4">
           <button

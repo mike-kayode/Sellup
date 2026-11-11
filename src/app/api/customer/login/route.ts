@@ -11,6 +11,7 @@ import {
   compareCustomerPassword,
 } from "@/lib/customer-auth";
 import { createMerchantAuditLog } from "@/lib/admin-audit";
+import { recordSecurityEvent } from "@/lib/security-events";
 
 const loginSchema = z.object({
   storeSlug: z.string().min(1),
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
       "unknown";
     const rate = await checkAuthRateLimit(`customer-login:${ip}`);
     if (!rate.success) {
+      await recordSecurityEvent("customer_login_rate_limited", request);
       return NextResponse.json(
         { error: "Too many login attempts. Please try again later." },
         { status: 429 }
@@ -66,6 +68,7 @@ export async function POST(request: NextRequest) {
       passwordHash: string;
       isEmailVerified: boolean;
       isWhatsAppVerified: boolean;
+      isBlocked: boolean;
     } | null = null;
 
     if (rawPhone) {
@@ -79,6 +82,7 @@ export async function POST(request: NextRequest) {
           passwordHash: customers.passwordHash,
           isEmailVerified: customers.isEmailVerified,
           isWhatsAppVerified: customers.isWhatsAppVerified,
+          isBlocked: customers.isBlocked,
         })
         .from(customers)
         .where(
@@ -98,6 +102,7 @@ export async function POST(request: NextRequest) {
           passwordHash: customers.passwordHash,
           isEmailVerified: customers.isEmailVerified,
           isWhatsAppVerified: customers.isWhatsAppVerified,
+          isBlocked: customers.isBlocked,
         })
         .from(customers)
         .where(
@@ -110,7 +115,8 @@ export async function POST(request: NextRequest) {
     // Fail closed: no customer, wrong password, or no password hash set.
     const hash = customer?.passwordHash ?? null;
     const passwordOk = hash ? await compareCustomerPassword(password, hash) : false;
-    if (!customer || !passwordOk) {
+    if (!customer || !passwordOk || customer.isBlocked) {
+      await recordSecurityEvent("customer_login_failed", request);
       return NextResponse.json({ error: "Invalid email/phone or password" }, { status: 401 });
     }
 

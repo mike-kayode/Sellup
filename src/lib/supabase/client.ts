@@ -19,6 +19,79 @@ export const supabase =
       })
     : null;
 
+export const ADMIN_IMPERSONATION_STORAGE_KEY =
+  "sellup.admin-impersonation-session";
+
+export interface BrowserAdminImpersonation {
+  accessToken: string;
+  merchantUserId: string;
+  merchantEmail: string;
+  merchantFullName: string;
+  storeId: string;
+  storeName: string;
+  expiresAt: string;
+}
+
+export function getBrowserAdminImpersonation(): BrowserAdminImpersonation | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const serialized = window.sessionStorage.getItem(
+      ADMIN_IMPERSONATION_STORAGE_KEY
+    );
+    if (!serialized) return null;
+    const value: unknown = JSON.parse(serialized);
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("accessToken" in value) ||
+      !("merchantUserId" in value) ||
+      !("merchantEmail" in value) ||
+      !("merchantFullName" in value) ||
+      !("storeId" in value) ||
+      !("storeName" in value) ||
+      !("expiresAt" in value) ||
+      typeof value.accessToken !== "string" ||
+      typeof value.merchantUserId !== "string" ||
+      typeof value.merchantEmail !== "string" ||
+      typeof value.merchantFullName !== "string" ||
+      typeof value.storeId !== "string" ||
+      typeof value.storeName !== "string" ||
+      typeof value.expiresAt !== "string" ||
+      !value.accessToken.startsWith("imp_") ||
+      !Number.isFinite(Date.parse(value.expiresAt))
+    ) {
+      window.sessionStorage.removeItem(ADMIN_IMPERSONATION_STORAGE_KEY);
+      return null;
+    }
+
+    return {
+      accessToken: value.accessToken,
+      merchantUserId: value.merchantUserId,
+      merchantEmail: value.merchantEmail,
+      merchantFullName: value.merchantFullName,
+      storeId: value.storeId,
+      storeName: value.storeName,
+      expiresAt: value.expiresAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function storeBrowserAdminImpersonation(
+  impersonation: BrowserAdminImpersonation
+) {
+  window.sessionStorage.setItem(
+    ADMIN_IMPERSONATION_STORAGE_KEY,
+    JSON.stringify(impersonation)
+  );
+}
+
+export function clearBrowserAdminImpersonation() {
+  window.sessionStorage.removeItem(ADMIN_IMPERSONATION_STORAGE_KEY);
+}
+
 // ---------------------------------------------------------------------------
 // Session-read retry (fixes the "intermittently logged out" reports).
 //
@@ -41,6 +114,36 @@ if (supabase) {
     for (let attempt = 0; ; attempt++) {
       const result = await originalGetSession();
       if (result.data.session || attempt >= SESSION_READ_RETRIES) {
+        const impersonation = getBrowserAdminImpersonation();
+        if (
+          result.error === null &&
+          result.data.session &&
+          impersonation &&
+          Date.parse(impersonation.expiresAt) > Date.now() &&
+          window.location.pathname.startsWith("/dashboard")
+        ) {
+          const session = result.data.session;
+          return {
+            ...result,
+            data: {
+              ...result.data,
+              session: {
+                ...session,
+                access_token: impersonation.accessToken,
+                user: {
+                  ...session.user,
+                  id: impersonation.merchantUserId,
+                  email: impersonation.merchantEmail,
+                  user_metadata: {
+                    ...session.user.user_metadata,
+                    full_name: impersonation.merchantFullName,
+                    role: "merchant",
+                  },
+                },
+              },
+            },
+          };
+        }
         return result;
       }
       await new Promise((resolve) =>

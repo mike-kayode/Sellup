@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, stores, orders } from "@/db/schema";
 import { count, sum, eq, desc, inArray } from "drizzle-orm";
-import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/admin-auth";
 
 /**
  * GET /api/admin/stores
@@ -10,44 +10,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = request.headers.get("authorization");
-    if (!auth?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = auth.slice(7);
-    const supabase = getSupabaseAdmin();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-// Resolve admin role: prefer the app `users` table role, but fall back
-    // to the Supabase user_metadata.role if the table is unavailable.
-    let role: string | null = null;
-    try {
-      const adminCheck = await db
-        .select({ role: users.role })
-        .from(users)
-        .where(eq(users.id, user.id))
-        .limit(1);
-      role = adminCheck[0]?.role ?? null;
-    } catch (err) {
-      console.warn(
-        "[admin/stores] users table unavailable, using user_metadata.role"
-      );
-    }
-
-    if (role !== "admin" && role !== "superadmin") {
-      const metaRole = user.user_metadata?.role as string | undefined;
-      if (metaRole !== "admin" && metaRole !== "superadmin") {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    }
+    const { error } = await requireAdmin(request);
+    if (error) return error;
 
     const storeList = await db
       .select({
@@ -108,8 +72,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-export async function POST() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }

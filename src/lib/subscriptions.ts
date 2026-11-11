@@ -20,7 +20,7 @@ export interface PlanInfo {
   name: string;
   price: number; // NGN per month, 0 = freemium
   priceOnRequest?: boolean; // true = custom pricing (no public price)
-  billingCycle: "monthly";
+  billingCycle: "monthly" | "yearly";
   tagline: string;
   features: string[];
   limits: {
@@ -143,7 +143,7 @@ export function planAtLeast(
 export function formatPrice(plan: PlanInfo): string {
   if (plan.priceOnRequest) return "Custom";
   if (plan.price === 0) return "Free";
-  return `₦${plan.price.toLocaleString()}/month`;
+  return `₦${plan.price.toLocaleString()}/${plan.billingCycle === "yearly" ? "year" : "month"}`;
 }
 
 /**

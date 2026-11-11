@@ -18,6 +18,12 @@ export default function AdminOrderDetailPage() {
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const [nextStatus, setNextStatus] = useState("pending");
+  const [reason, setReason] = useState("");
+  const [notes, setNotes] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -40,18 +46,74 @@ export default function AdminOrderDetailPage() {
         if (res.ok) {
           const data = await res.json();
           setDetail(data);
+          setNextStatus(data.order.status || "pending");
+          setNotes(data.order.notes || "");
         } else {
           const data = await res.json();
           setError(data.error || "Failed to load order details");
         }
-      } catch {
-        setError("Failed to load order details");
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Failed to load order details"
+        );
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, [params.id]);
+  }, [params.id, retryKey]);
+
+  async function saveOrder() {
+    if (!detail || saving) return;
+    if (nextStatus !== detail.order.status && !reason.trim()) {
+      setActionError("A reason is required to change the order status.");
+      return;
+    }
+    if (
+      nextStatus !== detail.order.status &&
+      !window.confirm(`Change order status to ${nextStatus}?`)
+    ) return;
+
+    setSaving(true);
+    setActionError("");
+    try {
+      const {
+        data: { session },
+      } = await getSupabaseClient().auth.getSession();
+      if (!session?.access_token) throw new Error("Not authenticated");
+      const response = await fetch(`/api/admin/orders/${detail.order.id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          notes,
+          ...(nextStatus !== detail.order.status ? { status: nextStatus } : {}),
+          ...(nextStatus !== detail.order.status ? { reason } : {}),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to update order");
+      setDetail((current) =>
+        current
+          ? {
+              ...current,
+              order: { ...current.order, ...result.order },
+            }
+          : current
+      );
+      setReason("");
+    } catch (saveError) {
+      setActionError(
+        saveError instanceof Error ? saveError.message : "Failed to update order"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -65,6 +127,9 @@ export default function AdminOrderDetailPage() {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-red-700">
         {error}
+        <button type="button" onClick={() => { setLoading(true); setRetryKey((key) => key + 1); }} className="ml-3 underline">
+          Retry
+        </button>
       </div>
     );
   }
@@ -96,6 +161,11 @@ export default function AdminOrderDetailPage() {
         </div>
       </div>
 
+      {actionError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+          {actionError}
+        </div>
+      )}
       <div className="grid sm:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <div className="flex items-center gap-3">
@@ -182,6 +252,49 @@ export default function AdminOrderDetailPage() {
                   {order.paymentStatus}
                 </span>
               </div>
+            </div>
+            <div className="mt-5 space-y-3 border-t pt-4">
+              <label className="block text-sm font-medium text-gray-700">
+                Update order status
+                <select
+                  value={nextStatus}
+                  onChange={(event) => setNextStatus(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                >
+                  {["pending", "confirmed", "processing", "preparing", "ready", "completed", "cancelled"].map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </label>
+              {nextStatus !== order.status && (
+                <label className="block text-sm font-medium text-gray-700">
+                  Reason (required)
+                  <input
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    maxLength={500}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  />
+                </label>
+              )}
+              <label className="block text-sm font-medium text-gray-700">
+                Internal order notes
+                <textarea
+                  rows={3}
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  maxLength={2000}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void saveOrder()}
+                className="w-full rounded-lg bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save order"}
+              </button>
             </div>
           </div>
 

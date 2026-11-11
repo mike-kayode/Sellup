@@ -46,6 +46,7 @@ export async function sendWhatsApp(message: WhatsAppMessage): Promise<boolean> {
         to: message.to,
         body: message.message,
       }),
+      signal: AbortSignal.timeout(8_000),
     });
 
     if (!response.ok) {

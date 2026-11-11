@@ -1,95 +1,159 @@
-
 import { NextRequest, NextResponse } from "next/server";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
+import {
+  adminImpersonationSessions,
+  adminMemberships,
+  auditLogs,
+  businesses,
+  users,
+} from "@/db/schema";
+import { getClientInfo } from "@/lib/admin-audit";
 import { requireAdmin } from "@/lib/admin-auth";
-import { businesses, users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { createAuditLog } from "@/lib/admin-audit";
+import { createImpersonationToken } from "@/lib/admin-impersonation";
 
-const impersonateSchema = z.object({
-  storeId: z.string().uuid(),
-  durationMinutes: z.number().int().min(1).max(480).default(60), // max 8 hours
-});
+const impersonateSchema = z
+  .object({
+    storeId: z.string().uuid(),
+    durationMinutes: z.number().int().min(1).max(480).default(60),
+  })
+  .strict();
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin(request);
-  if (auth.error) return auth.error;
-  if (!auth.user) {
+  const { user, error } = await requireAdmin(request);
+  if (error) return error;
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { user } = auth;
-
-  // Only superadmin can impersonate.
   if (user.role !== "superadmin") {
     return NextResponse.json({ error: "Superadmin only" }, { status: 403 });
   }
 
   try {
-    const body = await request.json();
-    const { storeId, durationMinutes } = impersonateSchema.parse(body);
-
-    // Verify the store exists.
-    const [store] = await db
-      .select({ id: businesses.id, storeName: businesses.storeName, userId: businesses.userId })
-      .from(businesses)
-      .where(eq(businesses.id, storeId))
-      .limit(1);
-
-    if (!store) {
-      return NextResponse.json({ error: "Store not found" }, { status: 404 });
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const parsed = impersonateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid impersonation request", details: parsed.error.flatten() },
+        { status: 400 }
+      );
     }
 
-    // Get the merchant user record.
-    const [merchantUser] = await db
-      .select({ id: users.id, email: users.email, fullName: users.fullName, role: users.role })
+    const [store] = await db
+      .select({
+        id: businesses.id,
+        storeName: businesses.storeName,
+        userId: businesses.userId,
+      })
+      .from(businesses)
+      .where(eq(businesses.id, parsed.data.storeId))
+      .limit(1);
+    if (!store) {
+      return NextResponse.json({ error: "Business not found" }, { status: 404 });
+    }
+
+    const [merchant] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        fullName: users.fullName,
+        role: users.role,
+        isActive: users.isActive,
+      })
       .from(users)
       .where(eq(users.id, store.userId))
       .limit(1);
-
-    if (!merchantUser) {
-      return NextResponse.json({ error: "Merchant user not found" }, { status: 404 });
+    if (!merchant || merchant.role !== "merchant" || !merchant.isActive) {
+      return NextResponse.json(
+        { error: "Active merchant account not found" },
+        { status: 404 }
+      );
     }
 
-    const impersonationExpiresAt = new Date(Date.now() + durationMinutes * 60 * 1000);
+    const [membership] = await db
+      .select({ isActive: adminMemberships.isActive, role: adminMemberships.role })
+      .from(adminMemberships)
+      .where(eq(adminMemberships.userId, user.id))
+      .limit(1);
+    if (!membership?.isActive || membership.role !== "superadmin") {
+      return NextResponse.json({ error: "Superadmin only" }, { status: 403 });
+    }
 
-    try {
-      await createAuditLog({
+    const { token, tokenHash } = createImpersonationToken();
+    const expiresAt = new Date(
+      Date.now() + parsed.data.durationMinutes * 60 * 1000
+    );
+    const { ipAddress, userAgent } = getClientInfo(request);
+
+    const session = await db.transaction(async (tx) => {
+      const revokedSessions = await tx
+        .update(adminImpersonationSessions)
+        .set({ revokedAt: new Date() })
+        .where(
+          and(
+            eq(adminImpersonationSessions.adminUserId, user.id),
+            isNull(adminImpersonationSessions.revokedAt)
+          )
+        )
+        .returning({ id: adminImpersonationSessions.id });
+
+      const [created] = await tx
+        .insert(adminImpersonationSessions)
+        .values({
+          tokenHash,
+          adminUserId: user.id,
+          merchantUserId: merchant.id,
+          storeId: store.id,
+          expiresAt,
+        })
+        .returning();
+
+      await tx.insert(auditLogs).values({
         actorId: user.id,
         actorRole: user.role,
         action: "admin.merchant.impersonate",
         resourceType: "business",
-        resourceId: storeId,
-        previousValue: undefined,
-        newValue: {
-          impersonatedStoreId: storeId,
-          impersonatedStoreName: store.storeName,
-          impersonatedUserId: merchantUser.id,
-          impersonatedUserEmail: merchantUser.email,
-          impersonatedByAdminId: user.id,
-          impersonationExpiresAt: impersonationExpiresAt.toISOString(),
+        resourceId: store.id,
+        storeId: store.id,
+        previousValue: {
+          revokedSessionIds: revokedSessions.map((session) => session.id),
         },
-        ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
-        userAgent: request.headers.get("user-agent") ?? undefined,
-        status: "success",
+        newValue: {
+          impersonationSessionId: created.id,
+          merchantUserId: merchant.id,
+          expiresAt: expiresAt.toISOString(),
+          revokedPriorSessionCount: revokedSessions.length,
+        },
+        ipAddress,
+        userAgent,
       });
-    } catch { /* ignore */ }
+
+      return created;
+    });
 
     return NextResponse.json({
-      message: "Impersonation session created",
       impersonation: {
-        storeId,
+        id: session.id,
+        token,
+        storeId: store.id,
         storeName: store.storeName,
-        merchantUserId: merchantUser.id,
-        merchantEmail: merchantUser.email,
-        expiresAt: impersonationExpiresAt,
+        merchantUserId: merchant.id,
+        merchantEmail: merchant.email,
+        merchantFullName: merchant.fullName,
+        expiresAt,
       },
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: "Invalid input", details: error.flatten() }, { status: 400 });
-    }
     console.error("Impersonation error:", error);
-    return NextResponse.json({ error: "Failed to create impersonation session" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create impersonation session" },
+      { status: 500 }
+    );
   }
 }

@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { findUserRecord } from "@/lib/auth";
 import { z } from "zod";
 import { checkAuthRateLimit } from "@/lib/rate-limit";
+import { recordSecurityEvent } from "@/lib/security-events";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
       "unknown";
     const rate = await checkAuthRateLimit(`login:${ip}`);
     if (!rate.success) {
+      await recordSecurityEvent("login_rate_limited", request);
       return NextResponse.json(
         {
           error: "Too many login attempts. Please try again later.",
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
+      await recordSecurityEvent("login_failed", request);
       const message = (error.message || "").toLowerCase();
       if (
         error.code === "email_not_confirmed" ||
@@ -65,6 +68,11 @@ export async function POST(request: NextRequest) {
     let userRecord = supabaseUser
       ? await findUserRecord(supabaseUser.id)
       : null;
+
+    if (userRecord && !userRecord.isActive) {
+      await recordSecurityEvent("login_inactive_account", request, userRecord.id);
+      return NextResponse.json({ error: "This account is inactive" }, { status: 403 });
+    }
 
     // If the user row doesn't exist yet, sync it from the auth user.
     if (supabaseUser && !userRecord) {

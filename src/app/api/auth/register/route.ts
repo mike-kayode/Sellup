@@ -5,6 +5,9 @@ import { z } from "zod";
 import { checkAuthRateLimit } from "@/lib/rate-limit";
 import { sendVerificationCodeEmail } from "@/lib/email";
 import { findUserByEmail, issueVerificationCode } from "@/lib/verification";
+import { db } from "@/db";
+import { systemSettings } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -32,6 +35,33 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validatedData = registerSchema.parse(body);
+
+    const [registrationSetting] = await db
+      .select({ value: systemSettings.value })
+      .from(systemSettings)
+      .where(eq(systemSettings.key, "enableRegistration"))
+      .limit(1);
+    if (registrationSetting) {
+      const settingValue =
+        registrationSetting.value &&
+        typeof registrationSetting.value === "object" &&
+        !Array.isArray(registrationSetting.value) &&
+        "value" in registrationSetting.value
+          ? registrationSetting.value.value
+          : registrationSetting.value;
+      if (settingValue === false) {
+        return NextResponse.json(
+          { error: "New account registration is currently closed" },
+          { status: 403 }
+        );
+      }
+      if (settingValue !== true) {
+        return NextResponse.json(
+          { error: "Registration settings are invalid" },
+          { status: 503 }
+        );
+      }
+    }
 
     // Create the user in Supabase Auth
     const supabase = getSupabaseAdmin();

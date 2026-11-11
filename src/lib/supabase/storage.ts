@@ -8,7 +8,6 @@
  * Files are stored under `{bucket}/{storeId}/{uuid}-{safeName}`.
  */
 import { getSupabaseClient } from "./client";
-import { getSupabaseAdmin } from "./server";
 
 const IMAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || "store-images";
 
@@ -102,14 +101,6 @@ export async function verifyImageSignature(file: File): Promise<boolean> {
     return header === "GIF87a" || header === "GIF89a";
   }
   return false;
-}
-
-/**
- * Server-side helper: verify a user owns a store before allowing uploads.
- * (Used by future server routes; keeps admin client available if needed.)
- */
-export function getStorageAdminClient() {
-  return getSupabaseAdmin().storage.from(IMAGE_BUCKET);
 }
 
 export { IMAGE_BUCKET };

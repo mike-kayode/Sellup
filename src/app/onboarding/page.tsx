@@ -50,6 +50,13 @@ const SERVICE_CATEGORIES = [
   "Other",
 ];
 
+const DEFAULT_SIGNUP_PLANS = [
+  { id: "freemium", name: "Freemium", price: 0, billingCycle: "monthly", features: ["5 Products", "1 Admin", "Basic Theme"] },
+  { id: "starter", name: "Starter", price: 5000, billingCycle: "monthly", features: ["20 Products", "Listing Template", "No Branding", "SEO"] },
+  { id: "business", name: "Business", price: 12000, billingCycle: "monthly", features: ["Unlimited Products", "5 Staff", "Inventory", "Coupons", "Custom Domain"] },
+  { id: "pro", name: "Custom", price: 0, priceOnRequest: true, billingCycle: "monthly", features: ["Unlimited Everything", "API Access", "White Label"] },
+];
+
 interface BusinessForm {
   businessName: string;
   category: string;
@@ -76,6 +83,8 @@ export default function OnboardingPage() {
   const [error, setError] = useState("");
   const [storeId, setStoreId] = useState("");
   const [selectedPlan, setSelectedPlan] = useState("freemium");
+  const [promotionCode, setPromotionCode] = useState("");
+  const [signupPlans, setSignupPlans] = useState(DEFAULT_SIGNUP_PLANS);
   // Once the merchant edits the slug by hand it stops following the name.
   const [slugTouched, setSlugTouched] = useState(false);
 
@@ -143,6 +152,15 @@ export default function OnboardingPage() {
     // Auth and payment callback state are synchronized after the client mounts.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     checkAuth();
+    void fetch("/api/subscriptions/plans")
+      .then(async (response) => {
+        if (!response.ok) return;
+        const result = await response.json();
+        if (Array.isArray(result.plans) && result.plans.length > 0) setSignupPlans(result.plans);
+      })
+      .catch(() => {
+        // Keep the existing plan choices available when the public plan service is temporarily unavailable.
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -277,12 +295,13 @@ export default function OnboardingPage() {
             storeId,
             plan: selectedPlan,
             provider: "paystack",
+            ...(promotionCode.trim() ? { promotionCode: promotionCode.trim() } : {}),
           }),
         });
 
         const paymentData = await res.json();
         if (!res.ok || !paymentData.canPay || !paymentData.result?.authorizationUrl) {
-          setError("Payment could not be initialized. Please try again or choose Freemium.");
+          setError(paymentData.error || paymentData.message || "Payment could not be initialized. Please try again or choose Freemium.");
           setLoading(false);
           return;
         }
@@ -681,12 +700,7 @@ export default function OnboardingPage() {
               Choose Your Plan
             </h2>
             <div className="grid gap-4">
-              {[
-                { id: "freemium", name: "Freemium", price: "Free", features: ["5 Products", "1 Admin", "Basic Theme"] },
-                { id: "starter", name: "Starter", price: "₦5,000/mo", features: ["20 Products", "Listing Template", "No Branding", "SEO"] },
-                { id: "business", name: "Business", price: "₦12,000/mo", features: ["Unlimited Products", "5 Staff", "Inventory", "Coupons", "Custom Domain"] },
-                { id: "pro", name: "Custom", price: "Custom", features: ["Unlimited Everything", "API Access", "White Label"] },
-              ].map((plan) => (
+              {signupPlans.map((plan) => (
                 <button
                   key={plan.id}
                   onClick={() => setSelectedPlan(plan.id)}
@@ -704,11 +718,27 @@ export default function OnboardingPage() {
                         {plan.features.slice(0, 3).join(" • ")}
                       </p>
                     </div>
-                    <span className="font-bold text-[#25D366]">{plan.price}</span>
+                    <span className="font-bold text-[#25D366]">
+                      {plan.priceOnRequest || plan.price === 0
+                        ? plan.priceOnRequest ? "Custom" : "Free"
+                        : `₦${Number(plan.price).toLocaleString()}/${plan.billingCycle === "yearly" ? "year" : "mo"}`}
+                    </span>
                   </div>
                 </button>
               ))}
             </div>
+            {selectedPlan !== "freemium" && (
+              <label className="mt-4 block text-sm font-medium text-gray-700">
+                Promotion code (optional)
+                <input
+                  value={promotionCode}
+                  onChange={(event) => setPromotionCode(event.target.value)}
+                  maxLength={50}
+                  autoCapitalize="characters"
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+              </label>
+            )}
             <button
               onClick={submitPlan}
               disabled={loading}

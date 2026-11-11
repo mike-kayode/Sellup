@@ -11,9 +11,11 @@ import {
   foreignKey,
   index,
   unique,
+  uniqueIndex,
+  check,
   jsonb,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // Users (Business Owners)
 export const users = pgTable(
@@ -30,6 +32,7 @@ export const users = pgTable(
     phone: varchar("phone", { length: 20 }),
     isEmailVerified: boolean("is_email_verified").default(false),
     isActive: boolean("is_active").default(true).notNull(),
+    sessionsRevokedAt: timestamp("sessions_revoked_at", { withTimezone: true }),
     role: varchar("role", { length: 50 }).default("user"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -37,6 +40,9 @@ export const users = pgTable(
   (table) => [
     index("users_email_idx").on(table.email),
     index("users_created_at_idx").on(table.createdAt),
+    index("users_role_created_at_idx").on(table.role, table.createdAt),
+    index("users_full_name_lower_idx").on(sql`lower(${table.fullName})`),
+    index("users_email_lower_idx").on(sql`lower(${table.email})`),
   ]
 );
 
@@ -100,6 +106,45 @@ export const adminMemberships = pgTable(
   ]
 );
 
+export const adminSessions = pgTable(
+  "admin_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: varchar("session_id", { length: 255 }).notNull().unique(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    ipAddress: varchar("ip_address", { length: 45 }),
+    userAgent: text("user_agent"),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("admin_sessions_user_last_seen_idx").on(table.userId, table.lastSeenAt),
+    index("admin_sessions_user_created_idx").on(table.userId, table.createdAt),
+    index("admin_sessions_active_expiry_idx").on(table.revokedAt, table.expiresAt),
+  ]
+);
+
+export const adminRoles = pgTable(
+  "admin_roles",
+  {
+    id: varchar("id", { length: 50 }).primaryKey(),
+    name: varchar("name", { length: 100 }).notNull(),
+    description: text("description").notNull().default(""),
+    permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+    isSystem: boolean("is_system").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("admin_roles_active_idx").on(table.isActive),
+  ]
+);
+
 // Businesses — the central entity on SellUp (formerly "Stores").
 // Every seller on SellUp is a business: products, services, or both.
 export const businesses = pgTable(
@@ -121,6 +166,11 @@ export const businesses = pgTable(
     city: varchar("city", { length: 100 }),
     state: varchar("state", { length: 100 }),
     country: varchar("country", { length: 100 }).default("Nigeria"),
+    currency: varchar("currency", { length: 10 }).default("NGN").notNull(),
+    timezone: varchar("timezone", { length: 100 })
+      .default("Africa/Lagos")
+      .notNull(),
+    locale: varchar("locale", { length: 10 }).default("en").notNull(),
     logo: varchar("logo", { length: 500 }),
     bannerImage: varchar("banner_image", { length: 500 }),
     primaryColor: varchar("primary_color", { length: 7 }).default("#25D366"),
@@ -140,6 +190,10 @@ export const businesses = pgTable(
     isPublished: boolean("is_published").default(false),
     isSuspended: boolean("is_suspended").default(false),
     isRestricted: boolean("is_restricted").default(false),
+    isVerified: boolean("is_verified").default(false).notNull(),
+    statusReason: text("status_reason"),
+    announcementEmailOptOut: boolean("announcement_email_opt_out").notNull().default(false),
+    announcementWhatsAppOptOut: boolean("announcement_whatsapp_opt_out").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -151,6 +205,20 @@ export const businesses = pgTable(
     index("stores_user_id_idx").on(table.userId),
     index("stores_slug_idx").on(table.storeSlug),
     index("stores_created_at_idx").on(table.createdAt),
+    index("businesses_plan_idx").on(table.plan),
+    index("businesses_country_idx").on(table.country),
+    index("businesses_country_lower_idx").on(sql`lower(${table.country})`),
+    index("businesses_status_idx").on(
+      table.isPublished,
+      table.isSuspended,
+      table.isRestricted,
+      table.isVerified
+    ),
+    index("businesses_name_lower_idx").on(sql`lower(${table.storeName})`),
+    index("businesses_slug_lower_idx").on(sql`lower(${table.storeSlug})`),
+    index("businesses_currency_idx").on(table.currency),
+    index("businesses_timezone_idx").on(table.timezone),
+    index("businesses_locale_idx").on(table.locale),
     unique("stores_user_id_slug_unique").on(table.userId, table.storeSlug),
   ]
 );
@@ -160,6 +228,69 @@ export const businesses = pgTable(
  * keeps working while the domain model converges on "business".
  */
 export const stores = businesses;
+
+export const businessInternalNotes = pgTable(
+  "business_internal_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    note: text("note").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("business_internal_notes_store_created_idx").on(
+      table.storeId,
+      table.createdAt
+    ),
+    index("business_internal_notes_actor_idx").on(table.actorId),
+  ]
+);
+
+export const adminImpersonationSessions = pgTable(
+  "admin_impersonation_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    adminUserId: uuid("admin_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    merchantUserId: uuid("merchant_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("admin_impersonation_sessions_store_idx").on(table.storeId),
+    index("admin_impersonation_sessions_admin_idx").on(table.adminUserId),
+    index("admin_impersonation_sessions_expires_idx").on(table.expiresAt),
+    index("admin_impersonation_sessions_store_active_idx").on(
+      table.storeId,
+      table.revokedAt,
+      table.expiresAt
+    ),
+    index("admin_impersonation_sessions_admin_active_idx").on(
+      table.adminUserId,
+      table.revokedAt
+    ),
+    unique("admin_impersonation_sessions_token_hash_unique").on(
+      table.tokenHash
+    ),
+  ]
+);
 
 // Categories
 export const categories = pgTable(
@@ -225,8 +356,10 @@ export const products = pgTable(
       foreignColumns: [categories.id],
     }),
     index("products_store_id_idx").on(table.storeId),
+    index("products_store_created_at_idx").on(table.storeId, table.createdAt),
     index("products_category_id_idx").on(table.categoryId),
     index("products_is_active_idx").on(table.isActive),
+    index("products_moderation_created_idx").on(table.isFlagged, table.createdAt),
     unique("products_store_id_slug_unique").on(table.storeId, table.slug),
   ]
 );
@@ -246,6 +379,7 @@ export const customers = pgTable(
     passwordHash: varchar("password_hash", { length: 255 }).default("").notNull(),
     isEmailVerified: boolean("is_email_verified").default(false).notNull(),
     isWhatsAppVerified: boolean("is_whatsapp_verified").default(false).notNull(),
+    isBlocked: boolean("is_blocked").default(false).notNull(),
     deliveryAddress: text("delivery_address"),
     city: varchar("city", { length: 100 }),
     state: varchar("state", { length: 100 }),
@@ -264,6 +398,15 @@ export const customers = pgTable(
       foreignColumns: [businesses.id],
     }),
     index("customers_store_id_idx").on(table.storeId),
+    index("customers_store_created_at_idx").on(table.storeId, table.createdAt),
+    index("customers_store_blocked_created_idx").on(
+      table.storeId,
+      table.isBlocked,
+      table.createdAt
+    ),
+    index("customers_name_lower_idx").on(sql`lower(${table.name})`),
+    index("customers_email_lower_idx").on(sql`lower(${table.email})`),
+    index("customers_phone_idx").on(table.phone),
     unique("customers_store_id_phone_unique").on(table.storeId, table.phone),
     unique("customers_store_id_whatsapp_unique").on(table.storeId, table.whatsapp),
   ]
@@ -305,9 +448,14 @@ export const orders = pgTable(
       foreignColumns: [customers.id],
     }),
     index("orders_store_id_idx").on(table.storeId),
+    index("orders_store_created_at_idx").on(table.storeId, table.createdAt),
     index("orders_customer_id_idx").on(table.customerId),
     index("orders_status_idx").on(table.status),
     index("orders_created_at_idx").on(table.createdAt),
+    index("orders_payment_status_created_at_idx").on(
+      table.paymentStatus,
+      table.createdAt
+    ),
     unique("orders_order_number_unique").on(table.orderNumber),
     unique("orders_idempotency_key_unique").on(table.idempotencyKey),
   ]
@@ -588,12 +736,21 @@ export const subscriptions = pgTable(
     cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
     gateway: varchar("gateway", { length: 50 }),
     gatewaySubscriptionId: varchar("gateway_subscription_id", { length: 255 }),
+    dunningAttempts: integer("dunning_attempts").notNull().default(0),
+    dunningNextAttemptAt: timestamp("dunning_next_attempt_at", { withTimezone: true }),
+    dunningLockedAt: timestamp("dunning_locked_at", { withTimezone: true }),
+    dunningLastError: text("dunning_last_error"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
     index("subscriptions_store_id_idx").on(table.storeId),
+    index("subscriptions_store_created_at_idx").on(
+      table.storeId,
+      table.createdAt
+    ),
     index("subscriptions_status_idx").on(table.status),
+    index("subscriptions_dunning_due_idx").on(table.status, table.dunningNextAttemptAt),
   ]
 );
 
@@ -621,6 +778,7 @@ export const payments = pgTable(
     index("payments_store_id_idx").on(table.storeId),
     index("payments_user_id_idx").on(table.userId),
     index("payments_status_idx").on(table.status),
+    index("payments_status_created_at_idx").on(table.status, table.createdAt),
   ]
 );
 
@@ -653,6 +811,24 @@ export const supportTickets = pgTable(
   ]
 );
 
+export const supportTicketMessages = pgTable(
+  "support_ticket_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticketId: uuid("ticket_id")
+      .notNull()
+      .references(() => supportTickets.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    isInternal: boolean("is_internal").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("support_ticket_messages_ticket_created_idx").on(table.ticketId, table.createdAt),
+    index("support_ticket_messages_actor_idx").on(table.actorId),
+  ]
+);
+
 // Announcements
 export const announcements = pgTable(
   "announcements",
@@ -667,12 +843,86 @@ export const announcements = pgTable(
       onDelete: "cascade",
     }),
     isActive: boolean("is_active").default(true),
+    sendEmail: boolean("send_email").notNull().default(false),
+    sendWhatsApp: boolean("send_whatsapp").notNull().default(false),
     scheduledAt: timestamp("scheduled_at"),
     expiresAt: timestamp("expires_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("announcements_active_idx").on(table.isActive),
+    index("announcements_created_idx").on(table.createdAt),
+    index("announcements_target_schedule_idx").on(table.target, table.scheduledAt, table.expiresAt),
+    index("announcements_target_plan_schedule_idx").on(table.target, table.targetPlan, table.scheduledAt, table.expiresAt),
+    index("announcements_target_store_schedule_idx").on(table.target, table.targetStoreId, table.scheduledAt, table.expiresAt),
+  ]
+);
+
+export const announcementDeliveries = pgTable(
+  "announcement_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    announcementId: uuid("announcement_id")
+      .notNull()
+      .references(() => announcements.id, { onDelete: "cascade" }),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    channel: varchar("channel", { length: 20 }).notNull(),
+    recipient: varchar("recipient", { length: 255 }).notNull(),
+    status: varchar("status", { length: 30 }).notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("announcement_deliveries_announcement_store_channel_unique")
+      .on(table.announcementId, table.storeId, table.channel),
+    check("announcement_deliveries_channel_check", sql`${table.channel} in ('email', 'whatsapp')`),
+    index("announcement_deliveries_status_next_attempt_idx").on(table.status, table.nextAttemptAt),
+    index("announcement_deliveries_status_locked_idx").on(table.status, table.lockedAt),
+    index("announcement_deliveries_announcement_created_idx").on(table.announcementId, table.createdAt),
+    index("announcement_deliveries_store_created_idx").on(table.storeId, table.createdAt),
+  ]
+);
+
+export const announcementDeliveryProgress = pgTable(
+  "announcement_delivery_progress",
+  {
+    announcementId: uuid("announcement_id")
+      .primaryKey()
+      .references(() => announcements.id, { onDelete: "cascade" }),
+    lastStoreId: uuid("last_store_id"),
+    isComplete: boolean("is_complete").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("announcement_delivery_progress_complete_updated_idx").on(table.isComplete, table.updatedAt),
+  ]
+);
+
+export const announcementDismissals = pgTable(
+  "announcement_dismissals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    announcementId: uuid("announcement_id")
+      .notNull()
+      .references(() => announcements.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("announcement_dismissals_announcement_user_unique").on(table.announcementId, table.userId),
+    index("announcement_dismissals_store_dismissed_idx").on(table.storeId, table.dismissedAt),
   ]
 );
 
@@ -723,6 +973,7 @@ export const auditLogs = pgTable(
     index("audit_logs_created_at_idx").on(table.createdAt),
     index("audit_logs_store_id_idx").on(table.storeId),
     index("audit_logs_store_created_idx").on(table.storeId, table.createdAt),
+    index("audit_logs_action_created_idx").on(table.action, table.createdAt),
   ]
 );
 
@@ -787,15 +1038,20 @@ export const domains = pgTable(
     cloudflareHostnameId: varchar("cloudflare_hostname_id", { length: 255 }),
     verificationToken: varchar("verification_token", { length: 255 }),
     dnsCheckedAt: timestamp("dns_checked_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    disabledReason: text("disabled_reason"),
     connectedAt: timestamp("connected_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
     index("domains_store_id_idx").on(table.storeId),
+    index("domains_store_created_at_idx").on(table.storeId, table.createdAt),
     index("domains_status_idx").on(table.status),
     index("domains_verification_token_idx").on(table.verificationToken),
     index("domains_cloudflare_hostname_id_idx").on(table.cloudflareHostnameId),
+    index("domains_expires_at_idx").on(table.expiresAt),
+    index("domains_status_created_idx").on(table.status, table.createdAt),
   ]
 );
 
@@ -876,6 +1132,7 @@ export const apiKeys = pgTable(
   (table) => [
     index("api_keys_prefix_idx").on(table.prefix),
     index("api_keys_store_id_idx").on(table.storeId),
+    index("api_keys_store_created_at_idx").on(table.storeId, table.createdAt),
     index("api_keys_expires_at_idx").on(table.expiresAt),
   ]
 );
@@ -1176,6 +1433,7 @@ export const webhooks = pgTable(
   },
   (table) => [
     index("webhooks_store_id_idx").on(table.storeId),
+    index("webhooks_store_created_at_idx").on(table.storeId, table.createdAt),
     index("webhooks_status_idx").on(table.status),
   ]
 );
@@ -1210,6 +1468,10 @@ export const webhookDeliveries = pgTable(
     index("webhook_deliveries_store_id_idx").on(table.storeId),
     index("webhook_deliveries_webhook_id_idx").on(table.webhookId),
     index("webhook_deliveries_status_idx").on(table.status),
+    index("webhook_deliveries_status_created_at_idx").on(
+      table.status,
+      table.createdAt
+    ),
     index("webhook_deliveries_next_attempt_idx").on(table.nextAttemptAt),
   ]
 );
@@ -1234,6 +1496,10 @@ export const backgroundJobs = pgTable(
   },
   (table) => [
     index("background_jobs_status_idx").on(table.status),
+    index("background_jobs_status_created_at_idx").on(
+      table.status,
+      table.createdAt
+    ),
     index("background_jobs_type_idx").on(table.type),
     index("background_jobs_created_at_idx").on(table.createdAt),
   ]
@@ -1258,6 +1524,7 @@ export const backupRecords = pgTable(
   (table) => [
     index("backup_records_status_idx").on(table.status),
     index("backup_records_created_at_idx").on(table.createdAt),
+    index("backup_records_completed_retention_idx").on(table.status, table.completedAt),
   ]
 );
 
@@ -1283,6 +1550,7 @@ export const knowledgeBaseArticles = pgTable(
   (table) => [
     index("knowledge_base_articles_category_idx").on(table.category),
     index("knowledge_base_articles_published_idx").on(table.isPublished),
+    index("knowledge_base_articles_public_updated_idx").on(table.isPublished, table.updatedAt),
   ]
 );
 
@@ -1295,6 +1563,7 @@ export const contentPages = pgTable(
     slug: varchar("slug", { length: 255 }).notNull().unique(),
     content: text("content"),
     status: varchar("status", { length: 50 }).notNull().default("draft"),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
     seoTitle: varchar("seo_title", { length: 255 }),
     seoDescription: text("seo_description"),
     authorId: uuid("author_id").references(() => users.id, {
@@ -1305,6 +1574,8 @@ export const contentPages = pgTable(
   },
   (table) => [
     index("content_pages_status_idx").on(table.status),
+    index("content_pages_status_updated_idx").on(table.status, table.updatedAt),
+    index("content_pages_status_scheduled_idx").on(table.status, table.scheduledAt),
   ]
 );
 
@@ -1333,6 +1604,7 @@ export const blogPosts = pgTable(
   (table) => [
     index("blog_posts_published_idx").on(table.isPublished),
     index("blog_posts_category_idx").on(table.category),
+    index("blog_posts_public_published_at_idx").on(table.isPublished, table.publishedAt),
   ]
 );
 
@@ -1371,6 +1643,7 @@ export const faqs = pgTable(
   (table) => [
     index("faqs_category_idx").on(table.category),
     index("faqs_published_idx").on(table.isPublished),
+    index("faqs_public_sort_idx").on(table.isPublished, table.sortOrder),
   ]
 );
 
@@ -1398,6 +1671,31 @@ export const platformPromotions = pgTable(
   (table) => [
     index("platform_promotions_code_idx").on(table.code),
     index("platform_promotions_active_idx").on(table.isActive),
+  ]
+);
+
+export const platformPromotionRedemptions = pgTable(
+  "platform_promotion_redemptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    promotionId: uuid("promotion_id")
+      .notNull()
+      .references(() => platformPromotions.id, { onDelete: "restrict" }),
+    paymentId: uuid("payment_id")
+      .notNull()
+      .references(() => payments.id, { onDelete: "restrict" }),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    discountAmount: decimal("discount_amount", { precision: 12, scale: 2 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("pending"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }).notNull().defaultNow(),
+    redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("platform_promotion_redemptions_payment_unique").on(table.paymentId),
+    index("platform_promotion_redemptions_promotion_status_idx").on(table.promotionId, table.status),
+    index("platform_promotion_redemptions_store_status_idx").on(table.storeId, table.status),
   ]
 );
 
@@ -1944,6 +2242,10 @@ export const aiGenerations = pgTable(
   },
   (table) => [
     index("ai_generations_store_id_idx").on(table.storeId),
+    index("ai_generations_store_created_at_idx").on(
+      table.storeId,
+      table.createdAt
+    ),
     index("ai_generations_feature_idx").on(table.feature),
     index("ai_generations_created_at_idx").on(table.createdAt),
   ]

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { APP_ROUTE_SLUGS, MARKETING_ROUTE_SLUGS, SYSTEM_SLUGS } from "@/lib/slugs";
 import { resolveCustomDomain } from "@/lib/custom-domains";
+import { isMaintenanceActive, readMaintenanceSettings } from "@/lib/admin-settings";
 
 /**
  * SellUp subdomain architecture
@@ -116,6 +117,64 @@ export default async function proxy(request: NextRequest) {
     mode = "dev";
   }
 
+  const firstSegment = path.split("/").filter(Boolean)[0] ?? "";
+  const isAdminPage =
+    firstSegment === "my-admin" || firstSegment === "admin";
+  const isCustomDomain =
+    mode === "dev" &&
+    hostname !== configuredBase &&
+    !hostname.endsWith(`.${configuredBase}`) &&
+    !isLocalHostname(hostname);
+  const isStorefrontPage =
+    mode === "store" ||
+    isCustomDomain ||
+    (mode !== "try" &&
+      path !== "/" &&
+      !APP_SLUGS.has(firstSegment) &&
+      !MARKETING_SLUGS.has(firstSegment) &&
+      !SYSTEM_SLUGS_SET.has(firstSegment));
+
+  if (!isAdminPage && (isStorefrontPage || APP_SLUGS.has(firstSegment))) {
+    try {
+      const maintenance = await readMaintenanceSettings();
+      if (isMaintenanceActive(maintenance)) {
+        const safeMessage = maintenance.message.replace(
+          /[&<>"']/g,
+          (character) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[character]!
+        );
+        return new NextResponse(
+          `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Maintenance</title></head><body style="font-family:system-ui,sans-serif;max-width:42rem;margin:15vh auto;padding:1.5rem;color:#17202a"><h1>Temporarily unavailable</h1><p>${safeMessage}</p></body></html>`,
+          {
+            status: 503,
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Retry-After": "300",
+              "Cache-Control": "no-store",
+            },
+          }
+        );
+      }
+    } catch (error) {
+      console.error("Maintenance status lookup failed:", error);
+      if (isStorefrontPage || APP_SLUGS.has(firstSegment)) {
+        return new NextResponse(
+          "Service temporarily unavailable while platform status is checked.",
+          {
+            status: 503,
+            headers: { "Retry-After": "60", "Cache-Control": "no-store" },
+          }
+        );
+      }
+    }
+  }
+
   if (mode === "dev") {
     // Custom domain resolution (Phase 4). Resolve an active custom hostname to
     // its storefront. Requires the Cloudflare-set shared secret so hostnames
@@ -153,8 +212,6 @@ export default async function proxy(request: NextRequest) {
 
   const redirectTo = (sub: "app" | "try" | null, targetPath = path) =>
     NextResponse.redirect(`${scheme}//${hostFor(sub)}${targetPath}${search}`);
-
-  const firstSegment = path.split("/").filter(Boolean)[0] ?? "";
 
   // ---- Store subdomain: {slug}.<base> serves the business page tree ----
   if (mode === "store" && storeSub) {

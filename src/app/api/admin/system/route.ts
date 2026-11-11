@@ -1,56 +1,71 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { systemSettings } from "@/db/schema";
-import { desc } from "drizzle-orm";
 import { requireAdmin } from "@/lib/admin-auth";
 
-async function checkDatabaseHealth() {
-  try {
-    const start = Date.now();
-    await db.select().from(systemSettings).limit(1);
-    const latency = Date.now() - start;
-    return { status: "operational", latency: `${latency}ms`, connections: "active" };
-  } catch {
-    return { status: "degraded", latency: "—", connections: "error" };
-  }
-}
-
-async function checkApiHealth() {
-  try {
-    const start = Date.now();
-    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/health`, { method: "GET", signal: AbortSignal.timeout(5000) });
-    const latency = Date.now() - start;
-    if (res.ok) {
-      return { status: "operational", uptime: `${latency}ms` };
-    }
-    return { status: "degraded", uptime: `${latency}ms` };
-  } catch {
-    return { status: "down", uptime: "—" };
-  }
-}
+const REQUIRED_ENVIRONMENT = [
+  "DATABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "CRON_SECRET",
+  "RESEND_API_KEY",
+  "NEXT_PUBLIC_APP_URL",
+  "PAYSTACK_SECRET_KEY",
+  "FLUTTERWAVE_SECRET_KEY",
+  "CPANEL_UPLOAD_DIRECTORY",
+  "NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET",
+  "AI_PROVIDER_ALLOWED_HOSTS",
+  "CLOUDFLARE_API_TOKEN",
+  "CLOUDFLARE_ZONE_ID",
+  "BACKUP_DIRECTORY",
+  "BACKUP_DOWNLOAD_SECRET",
+  "BACKUP_RETENTION_DAYS",
+  "PG_DUMP_PATH",
+];
 
 export async function GET(request: NextRequest) {
+  const { error } = await requireAdmin(request);
+  if (error) return error;
   try {
-    const { user, error } = await requireAdmin(request);
-    if (error) return error;
-
-    const settings = await db.select().from(systemSettings).orderBy(desc(systemSettings.updatedAt));
-    const [apiHealth, dbHealth] = await Promise.all([checkApiHealth(), checkDatabaseHealth()]);
-
+    const start = Date.now();
+    await db.select({ key: systemSettings.key }).from(systemSettings).limit(1);
+    const dbLatency = Date.now() - start;
+    const environment = REQUIRED_ENVIRONMENT.map((name) => ({
+      name,
+      present: Boolean(process.env[name]),
+    }));
+    const emailConfigured = Boolean(process.env.RESEND_API_KEY);
+    const storageConfigured = Boolean(
+      process.env.CPANEL_UPLOAD_DIRECTORY
+      || (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET)
+    );
+    const paymentsConfigured = Boolean(
+      process.env.PAYSTACK_SECRET_KEY
+      || process.env.FLUTTERWAVE_SECRET_KEY
+      || process.env.PAYMENT_SECRET_KEY
+    );
+    const dbStatus = { status: "operational", latency: `${dbLatency}ms` };
+    const services = [
+      { name: "Application", status: "operational", detail: "Admin API responding" },
+      { name: "Database", status: dbStatus.status, detail: `Query latency ${dbStatus.latency}` },
+      { name: "Email", status: emailConfigured ? "operational" : "degraded", detail: emailConfigured ? "Provider credentials configured" : "RESEND_API_KEY is missing" },
+      { name: "Storage", status: storageConfigured ? "operational" : "degraded", detail: storageConfigured ? "Storage configuration detected" : "Storage configuration missing" },
+      { name: "Payments", status: paymentsConfigured ? "operational" : "degraded", detail: paymentsConfigured ? "At least one provider credential configured" : "No payment provider credentials detected" },
+      { name: "Cron", status: process.env.CRON_SECRET ? "operational" : "degraded", detail: process.env.CRON_SECRET ? "Secret-protected cron endpoints enabled" : "CRON_SECRET is missing" },
+    ];
     return NextResponse.json({
-      settings,
-      apiStatus: apiHealth,
-      dbStatus: dbHealth,
-      services: [
-        { name: "API Server", status: apiHealth.status, detail: apiHealth.uptime },
-        { name: "Database", status: dbHealth.status, detail: `Latency: ${dbHealth.latency}` },
-        { name: "Storage", status: "operational", detail: "Connected" },
-        { name: "Payment Gateway", status: "operational", detail: "Ready" },
-        { name: "Email Service", status: "operational", detail: "Ready" },
-      ],
+      apiStatus: { status: "operational", uptime: "online" },
+      dbStatus,
+      services,
+      environment,
+      app: {
+        version: process.env.APP_VERSION || "unknown",
+        buildTime: process.env.BUILD_TIME || "unknown",
+      },
     });
   } catch (error) {
-    console.error("Admin system error:", error);
+    console.error("Admin system health query failed:", error);
     return NextResponse.json({ error: "Failed to load system status" }, { status: 500 });
   }
 }

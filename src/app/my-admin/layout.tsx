@@ -71,6 +71,7 @@ const menuGroups = [
     items: [
       { label: "Domains", href: "/my-admin/domains", icon: Globe },
       { label: "Integrations", href: "/my-admin/integrations", icon: Settings },
+      { label: "AI Providers", href: "/my-admin/ai", icon: Settings },
       { label: "Features", href: "/my-admin/features", icon: Settings },
       { label: "API Management", href: "/my-admin/api", icon: Settings },
       { label: "Webhooks", href: "/my-admin/webhooks", icon: Settings },
@@ -104,12 +105,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [adminUser, setAdminUser] = useState<{ email: string; fullName: string; role: string } | null>(null);
 
   useEffect(() => {
     async function checkAdmin() {
       setCheckError(null);
+      setMfaRequired(false);
+      setLoading(true);
       try {
         const supabase = getSupabaseClient();
         const {
@@ -130,6 +134,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           return;
         }
         if (adminRes.status === 403) {
+          const denial = await adminRes.json().catch(() => null);
+          if (denial?.code === "MFA_REQUIRED") {
+            setMfaRequired(true);
+            setIsAdmin(true);
+            setAdminUser({
+              email: session.user.email || "",
+              fullName: (session.user.user_metadata?.full_name as string) || "",
+              role: "admin",
+            });
+            setLoading(false);
+            if (pathname !== "/my-admin/security") router.replace("/my-admin/security");
+            return;
+          }
           // Confirmed by the server: this account is not an admin.
           router.push("/dashboard");
           return;
@@ -161,7 +178,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       }
     }
     checkAdmin();
-  }, [router, reloadKey]);
+  }, [pathname, router, reloadKey]);
 
   async function handleLogout() {
     try {
@@ -216,6 +233,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return null;
   }
 
+  const visibleMenuGroups = mfaRequired
+    ? [{ title: "Security", items: [{ label: "Security Center", href: "/my-admin/security", icon: Shield }] }]
+    : menuGroups;
+
   return (
     <div className="scrollbar-hidden flex h-screen bg-slate-50 overflow-hidden">
       {/* Sidebar */}
@@ -239,7 +260,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="scrollbar-hidden flex-1 overflow-y-auto py-6">
-          {menuGroups.map((group) => (
+          {visibleMenuGroups.map((group) => (
             <div key={group.title} className="mb-6">
               <p className="px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                 {group.title}
@@ -294,7 +315,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-600">Platform Administration</span>
+            <span className="text-sm text-slate-600">
+              {mfaRequired ? "Multi-factor authentication required" : "Platform Administration"}
+            </span>
           </div>
         </div>
 

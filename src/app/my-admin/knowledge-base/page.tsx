@@ -7,11 +7,14 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 interface Article {
   id: string;
   title: string;
+  slug: string;
   content: string;
   category: string;
   tags: string[];
   isPublished: boolean;
   createdAt: string;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
 }
 
 export default function AdminKnowledgeBasePage() {
@@ -19,7 +22,8 @@ export default function AdminKnowledgeBasePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ title: "", content: "", category: "general", tags: "", isPublished: false });
+  const [formData, setFormData] = useState({ id: "", title: "", slug: "", content: "", category: "general", tags: "", isPublished: false, seoTitle: "", seoDescription: "" });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -41,13 +45,10 @@ export default function AdminKnowledgeBasePage() {
 
         if (res.ok) {
           const data = await res.json();
-          setArticles((data.articles || []).map((a: any) => ({
+          setArticles((data.articles || []).map((a: Article) => ({
             ...a,
-            title: a.title || a.name,
-            content: a.content || a.description,
-            category: a.metadata?.category || "general",
-            tags: a.metadata?.tags || [],
-            isPublished: a.isPublished,
+            category: a.category || "general",
+            tags: Array.isArray(a.tags) ? a.tags : [],
           })));
         } else {
           const data = await res.json();
@@ -64,37 +65,48 @@ export default function AdminKnowledgeBasePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setError("");
     try {
       const supabase = getSupabaseClient();
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session?.access_token) return;
+      if (!session?.access_token) throw new Error("Not authenticated");
 
-      const res = await fetch("/api/admin/knowledge-base", {
-        method: "POST",
+      const res = await fetch(formData.id ? `/api/admin/knowledge-base/${formData.id}` : "/api/admin/knowledge-base", {
+        method: formData.id ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           title: formData.title,
+          slug: formData.slug || undefined,
           content: formData.content,
           category: formData.category,
           tags: formData.tags.split(",").map((t) => t.trim()).filter(Boolean),
           isPublished: formData.isPublished,
+          seoTitle: formData.seoTitle || null,
+          seoDescription: formData.seoDescription || null,
         }),
       });
 
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save article");
       if (res.ok) {
         setShowForm(false);
-        setFormData({ title: "", content: "", category: "general", tags: "", isPublished: false });
-        const data = await res.json();
-        setArticles((prev) => [{ ...data.article, title: data.article.title || data.article.name, content: data.article.content || data.article.description, category: "general", tags: [], isPublished: data.article.isPublished }, ...prev]);
+        setFormData({ id: "", title: "", slug: "", content: "", category: "general", tags: "", isPublished: false, seoTitle: "", seoDescription: "" });
+        setArticles((previous) => formData.id
+          ? previous.map((article) => article.id === formData.id ? data.article : article)
+          : [data.article, ...previous]);
       }
-    } catch {
-      // ignore
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to save article");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -126,7 +138,7 @@ export default function AdminKnowledgeBasePage() {
           className="flex items-center gap-2 px-4 py-2 bg-[#25D366] text-white rounded-lg hover:bg-[#1da851] transition-colors"
         >
           <Plus size={18} />
-          New Article
+          {showForm ? "Close form" : "New Article"}
         </button>
       </div>
 
@@ -143,6 +155,15 @@ export default function AdminKnowledgeBasePage() {
             />
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Slug (optional)</label>
+            <input
+              type="text"
+              value={formData.slug}
+              onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
             <textarea
               required
@@ -151,6 +172,14 @@ export default function AdminKnowledgeBasePage() {
               onChange={(e) => setFormData({ ...formData, content: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
             />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="text-sm font-medium text-gray-700">SEO title
+              <input value={formData.seoTitle} onChange={(e) => setFormData({ ...formData, seoTitle: e.target.value })} className="mt-1 w-full rounded border px-3 py-2" />
+            </label>
+            <label className="text-sm font-medium text-gray-700">SEO description
+              <input value={formData.seoDescription} onChange={(e) => setFormData({ ...formData, seoDescription: e.target.value })} className="mt-1 w-full rounded border px-3 py-2" />
+            </label>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -188,8 +217,8 @@ export default function AdminKnowledgeBasePage() {
             <span className="text-sm text-gray-700">Publish immediately</span>
           </label>
           <div className="flex gap-3">
-            <button type="submit" className="px-4 py-2 bg-[#25D366] text-white rounded-lg hover:bg-[#1da851] transition-colors">
-              Save Article
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-[#25D366] text-white rounded-lg hover:bg-[#1da851] transition-colors disabled:opacity-50">
+              {saving ? "Saving…" : "Save Article"}
             </button>
             <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
               Cancel
@@ -207,6 +236,7 @@ export default function AdminKnowledgeBasePage() {
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Category</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Status</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Created</th>
+                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -236,6 +266,22 @@ export default function AdminKnowledgeBasePage() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {new Date(article.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4">
+                    <button type="button" onClick={() => {
+                      setFormData({
+                        id: article.id,
+                        title: article.title,
+                        slug: article.slug,
+                        content: article.content,
+                        category: article.category,
+                        tags: (article.tags || []).join(", "),
+                        isPublished: article.isPublished,
+                        seoTitle: article.seoTitle || "",
+                        seoDescription: article.seoDescription || "",
+                      });
+                      setShowForm(true);
+                    }} className="text-blue-700 underline">Edit</button>
                   </td>
                 </tr>
               ))}

@@ -11,13 +11,14 @@
  */
 
 import { db } from "@/db";
+import { isIP } from "node:net";
 import {
   aiGenerations,
   aiProviders,
   aiQuotas,
   businesses,
 } from "@/db/schema";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { encryptSensitiveDataV2, decryptSensitiveDataV2 } from "@/lib/encryption";
 
 export type AiFeature =
@@ -66,6 +67,15 @@ const PII_PATTERNS = [
 ];
 
 const MAX_USER_PROMPT_CHARS = 4000;
+const DEFAULT_AI_PROVIDER_HOSTS = [
+  "api.openai.com",
+  "api.anthropic.com",
+  "generativelanguage.googleapis.com",
+  "api.mistral.ai",
+  "api.deepseek.com",
+  "api.groq.com",
+  "openrouter.ai",
+];
 
 function containsPiiOrSecrets(text: string): boolean {
   return PII_PATTERNS.some((p) => p.test(text));
@@ -94,12 +104,13 @@ function sanitizeUserPrompt(text: string): string {
 async function resolveProvider(
   storeId: string,
   preferred?: string
-): Promise<{ id: string; name: string; apiKey: string } | null> {
+): Promise<{ id: string; name: string; apiKey: string; endpoint: string | null } | null> {
   const [provider] = await db
     .select({
       id: aiProviders.id,
       name: aiProviders.name,
       encryptedApiKey: aiProviders.encryptedApiKey,
+      endpoint: aiProviders.endpoint,
     })
     .from(aiProviders)
     .where(
@@ -118,7 +129,44 @@ async function resolveProvider(
   } catch {
     return null;
   }
-  return { id: provider.id, name: provider.name, apiKey };
+  return { id: provider.id, name: provider.name, apiKey, endpoint: provider.endpoint };
+}
+
+function getAllowedAiProviderHosts(): Set<string> {
+  const configured = (process.env.AI_PROVIDER_ALLOWED_HOSTS || "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+  return new Set([...DEFAULT_AI_PROVIDER_HOSTS, ...configured]);
+}
+
+export function isAllowedAiProviderEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    const hostname = url.hostname.toLowerCase();
+    return url.protocol === "https:"
+      && !url.username
+      && !url.password
+      && !url.search
+      && !url.hash
+      && (!url.port || url.port === "443")
+      && isIP(hostname) === 0
+      && hostname !== "localhost"
+      && !hostname.endsWith(".localhost")
+      && !hostname.endsWith(".local")
+      && getAllowedAiProviderHosts().has(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function getChatCompletionsUrl(endpoint: string | null): string {
+  const base = new URL(endpoint || "https://api.openai.com/v1");
+  if (!isAllowedAiProviderEndpoint(base.toString())) {
+    throw new Error("AI provider endpoint must use HTTPS and an approved provider host");
+  }
+  base.pathname = `${base.pathname.replace(/\/+$/, "")}/chat/completions`;
+  return base.toString();
 }
 
 async function getOrCreateQuota(storeId: string): Promise<{
@@ -145,11 +193,32 @@ async function getOrCreateQuota(storeId: string): Promise<{
       monthStart: aiQuotas.monthStart,
     })
     .from(aiQuotas)
-    .where(
-      and(eq(aiQuotas.storeId, storeId), gte(aiQuotas.monthStart, monthStart))
-    )
+    .where(eq(aiQuotas.storeId, storeId))
     .limit(1);
   if (existing) {
+    if (existing.monthStart < monthStart) {
+      const [reset] = await db.update(aiQuotas).set({
+        tokensUsedThisMonth: 0,
+        costUsedThisMonth: "0.0000",
+        monthStart,
+        updatedAt: now,
+      }).where(eq(aiQuotas.id, existing.id)).returning({
+        id: aiQuotas.id,
+        tokensUsedThisMonth: aiQuotas.tokensUsedThisMonth,
+        costUsedThisMonth: aiQuotas.costUsedThisMonth,
+        monthlyTokenLimit: aiQuotas.monthlyTokenLimit,
+        monthlyCostCap: aiQuotas.monthlyCostCap,
+        monthStart: aiQuotas.monthStart,
+      });
+      return {
+        id: reset.id,
+        tokensUsed: reset.tokensUsedThisMonth,
+        costUsed: Number(reset.costUsedThisMonth),
+        tokenLimit: reset.monthlyTokenLimit,
+        costCap: Number(reset.monthlyCostCap),
+        monthStart: reset.monthStart,
+      };
+    }
     return {
       id: existing.id,
       tokensUsed: existing.tokensUsedThisMonth,
@@ -268,7 +337,7 @@ export async function generateText(
   let outputTokens = 0;
   let costUsd = 0;
   try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    const resp = await fetch(getChatCompletionsUrl(provider.endpoint), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${provider.apiKey}`,
@@ -283,6 +352,8 @@ export async function generateText(
         max_tokens: input.maxTokens ?? 500,
         temperature: input.temperature ?? 0.7,
       }),
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) {
       throw new Error(`provider error: ${resp.status}`);
@@ -338,6 +409,51 @@ export async function generateText(
     costUsd,
     provider: provider.name,
   };
+}
+
+export async function testAiProviderConnection(providerId: string): Promise<{ provider: string; latencyMs: number }> {
+  const [provider] = await db.select({
+    name: aiProviders.name,
+    endpoint: aiProviders.endpoint,
+    encryptedApiKey: aiProviders.encryptedApiKey,
+  }).from(aiProviders).where(and(
+    eq(aiProviders.id, providerId),
+    eq(aiProviders.isActive, true)
+  )).limit(1);
+  if (!provider?.encryptedApiKey) throw new Error("Active provider or credential not found");
+
+  let apiKey: string;
+  try {
+    apiKey = decryptSensitiveDataV2(provider.encryptedApiKey);
+  } catch {
+    throw new Error("Provider credential could not be decrypted");
+  }
+
+  const startedAt = Date.now();
+  const response = await fetch(getChatCompletionsUrl(provider.endpoint), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: "Reply with OK." }],
+      max_tokens: 2,
+      temperature: 0,
+    }),
+    redirect: "error",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Provider returned HTTP ${response.status}`);
+  const result = await response.json() as {
+    choices?: Array<{ message?: { content?: unknown } }>;
+  };
+  const text = result.choices?.[0]?.message?.content;
+  if (typeof text !== "string" || !text.trim()) {
+    throw new Error("Provider returned an unexpected response");
+  }
+  return { provider: provider.name, latencyMs: Date.now() - startedAt };
 }
 
 

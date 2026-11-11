@@ -1,28 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
+import { count, desc } from "drizzle-orm";
 import { db } from "@/db";
-import { backupRecords } from "@/db/schema";
-import { desc, count } from "drizzle-orm";
+import { auditLogs, backupRecords } from "@/db/schema";
 import { requireAdmin } from "@/lib/admin-auth";
-import { createAuditLog, getClientInfo } from "@/lib/admin-audit";
+import { getClientInfo } from "@/lib/admin-audit";
 
 export async function GET(request: NextRequest) {
+  const { error } = await requireAdmin(request);
+  if (error) return error;
   try {
-    const { user, error } = await requireAdmin(request);
-    if (error) return error;
-
-    const totalAgg = await db.select({ total: count() }).from(backupRecords);
-    const backups = await db.select().from(backupRecords).orderBy(desc(backupRecords.createdAt)).limit(20);
-
-    return NextResponse.json({
-      backups: backups.map((backup) => ({
-        id: backup.id,
-        name: backup.name,
-        size: backup.size || "0 MB",
-        status: backup.status,
-        createdAt: backup.createdAt,
-      })),
-      total: totalAgg[0]?.total ?? 0,
-    });
+    const url = new URL(request.url);
+    const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get("limit") || "20", 10) || 20));
+    const [totalResult, rows] = await Promise.all([
+      db.select({ total: count() }).from(backupRecords),
+      db.select({
+        id: backupRecords.id,
+        name: backupRecords.name,
+        size: backupRecords.size,
+        status: backupRecords.status,
+        type: backupRecords.type,
+        createdAt: backupRecords.createdAt,
+        completedAt: backupRecords.completedAt,
+      }).from(backupRecords)
+        .orderBy(desc(backupRecords.createdAt), desc(backupRecords.id))
+        .limit(limit).offset((page - 1) * limit),
+    ]);
+    return NextResponse.json({ backups: rows, total: totalResult[0]?.total ?? 0, page, limit });
   } catch (error) {
     console.error("Admin backups error:", error);
     return NextResponse.json({ error: "Failed to load backups" }, { status: 500 });
@@ -30,34 +34,34 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const { user, error } = await requireAdmin(request);
+  if (error) return error;
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const { user, error } = await requireAdmin(request);
-    if (error) return error;
-
-    const [backup] = await db.insert(backupRecords).values({
-      name: `full_backup_${new Date().toISOString().split("T")[0].replace(/-/g, "_")}.sql`,
-      size: "0 MB",
-      status: "pending",
-      type: "full",
-      createdBy: user?.id || null,
-    }).returning();
-
-    const clientInfo = getClientInfo(request);
-    if (user) {
-      await createAuditLog({
+    const { ipAddress, userAgent } = getClientInfo(request);
+    const backup = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(backupRecords).values({
+        name: `sellup-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.dump`,
+        size: null,
+        status: "pending",
+        type: "full",
+        createdBy: user.id,
+      }).returning();
+      await tx.insert(auditLogs).values({
         actorId: user.id,
         actorRole: user.role,
-        action: "backup.created",
+        action: "backup.requested",
         resourceType: "backup",
-        resourceId: backup.id,
-        newValue: { name: backup.name },
-        ...clientInfo,
+        resourceId: created.id,
+        newValue: { status: created.status, type: created.type },
+        ipAddress,
+        userAgent,
       });
-    }
-
-    return NextResponse.json({ backup }, { status: 201 });
+      return created;
+    });
+    return NextResponse.json({ backup }, { status: 202 });
   } catch (error) {
-    console.error("Admin backup create error:", error);
-    return NextResponse.json({ error: "Failed to create backup" }, { status: 500 });
+    console.error("Admin backup request error:", error);
+    return NextResponse.json({ error: "Failed to request backup" }, { status: 500 });
   }
 }

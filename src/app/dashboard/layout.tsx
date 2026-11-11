@@ -33,7 +33,12 @@ import {
   Warehouse,
   MessageCircle,
 } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import {
+  clearBrowserAdminImpersonation,
+  getBrowserAdminImpersonation,
+  getSupabaseClient,
+  type BrowserAdminImpersonation,
+} from "@/lib/supabase/client";
 import {
   isPaidPlan,
   isPlanAtLeast,
@@ -41,6 +46,7 @@ import {
   type PlanId,
 } from "@/lib/entitlements";
 import { OrderNotificationPrompt } from "@/components/order-notification-prompt";
+import { MerchantAnnouncementBanner } from "@/components/merchant-announcement-banner";
 
 /** Dashboard modules restricted to paid subscribers (Starter and above). */
 const PAID_ONLY_PATHS = [
@@ -66,10 +72,24 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [paid, setPaid] = useState(false);
+  const [impersonation, setImpersonation] =
+    useState<BrowserAdminImpersonation | null>(null);
+  const [exitError, setExitError] = useState("");
+  const [exitingImpersonation, setExitingImpersonation] = useState(false);
 
   useEffect(() => {
     async function checkAuth() {
       try {
+        const browserImpersonation = getBrowserAdminImpersonation();
+        if (
+          browserImpersonation &&
+          Date.parse(browserImpersonation.expiresAt) <= Date.now()
+        ) {
+          clearBrowserAdminImpersonation();
+          router.replace(`/my-admin/businesses/${browserImpersonation.storeId}`);
+          return;
+        }
+
         const supabase = getSupabaseClient();
         const {
           data: { session },
@@ -86,6 +106,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           fullName:
             (session.user.user_metadata?.full_name as string) || "",
         });
+        setImpersonation(browserImpersonation);
 
         // Resolve the merchant's plan so paid-only modules can be hidden
         // from freemium accounts (defaults to freemium on any failure).
@@ -122,7 +143,40 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     checkAuth();
   }, [router]);
 
+  async function exitImpersonation() {
+    if (!impersonation || exitingImpersonation) return;
+    setExitingImpersonation(true);
+    setExitError("");
+
+    try {
+      const response = await fetch("/api/impersonation/exit", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${impersonation.accessToken}`,
+        },
+      });
+      if (!response.ok && response.status !== 401) {
+        const result = await response.json();
+        throw new Error(result.error || "Failed to end impersonation");
+      }
+
+      clearBrowserAdminImpersonation();
+      router.replace(`/my-admin/businesses/${impersonation.storeId}`);
+      router.refresh();
+    } catch (error) {
+      setExitError(
+        error instanceof Error ? error.message : "Failed to end impersonation"
+      );
+      setExitingImpersonation(false);
+    }
+  }
+
   async function handleLogout() {
+    if (impersonation) {
+      await exitImpersonation();
+      return;
+    }
+
     try {
       const supabase = getSupabaseClient();
       await supabase.auth.signOut();
@@ -293,13 +347,36 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             className="w-full flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
           >
             <LogOut size={18} />
-            Logout
+            {impersonation ? "Exit impersonation" : "Logout"}
           </button>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
+        {impersonation && (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 bg-amber-100 px-5 py-3 text-amber-950"
+            role="status"
+          >
+            <p className="text-sm font-medium">
+              Impersonating {impersonation.merchantFullName} at{" "}
+              {impersonation.storeName}. Session expires{" "}
+              {new Date(impersonation.expiresAt).toLocaleTimeString()}.
+              {exitError && (
+                <span className="ml-2 font-normal text-red-700">{exitError}</span>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={exitImpersonation}
+              disabled={exitingImpersonation}
+              className="rounded-lg border border-amber-800 px-3 py-1.5 text-sm font-semibold hover:bg-amber-200 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-amber-700"
+            >
+              {exitingImpersonation ? "Exiting..." : "Exit impersonation"}
+            </button>
+          </div>
+        )}
         {/* Top Bar */}
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <button
@@ -321,7 +398,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Content */}
         <div className="scrollbar-hidden flex-1 overflow-y-auto">
           <div className="p-6 md:p-8 max-w-7xl mx-auto w-full">
-            {children}
+           {!impersonation && (
+             <div className="mb-6">
+               <MerchantAnnouncementBanner />
+             </div>
+           )}
+           {children}
           </div>
         </div>
       </div>

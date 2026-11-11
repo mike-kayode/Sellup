@@ -10,8 +10,9 @@ export async function GET(request: NextRequest) {
     if (error) return error;
 
     const url = new URL(request.url);
-    const search = url.searchParams.get("search") || "";
+    const search = (url.searchParams.get("search") || "").trim().slice(0, 100);
     const storeId = url.searchParams.get("storeId") || "";
+    const status = url.searchParams.get("status") || "all";
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "20", 10) || 20));
     const offset = (page - 1) * limit;
@@ -19,6 +20,9 @@ export async function GET(request: NextRequest) {
     const filters = [];
     if (search) filters.push(ilike(products.name, `%${search}%`));
     if (storeId) filters.push(eq(products.storeId, storeId));
+    if (status === "active") filters.push(eq(products.isActive, true));
+    if (status === "inactive") filters.push(eq(products.isActive, false));
+    if (status === "flagged") filters.push(eq(products.isFlagged, true));
     const where = filters.length ? and(...filters) : undefined;
 
     const query = db.select({
@@ -28,6 +32,8 @@ export async function GET(request: NextRequest) {
       price: products.price,
       stock: products.stock,
       isActive: products.isActive,
+      isFlagged: products.isFlagged,
+      flagReason: products.flagReason,
       storeId: products.storeId,
       categoryId: products.categoryId,
       createdAt: products.createdAt,
@@ -61,6 +67,8 @@ export async function GET(request: NextRequest) {
         price: product.price,
         stock: product.stock,
         isActive: product.isActive,
+        isFlagged: product.isFlagged,
+        flagReason: product.flagReason,
         storeName: store?.storeName || "Unknown",
         categoryName: category?.name || null,
         createdAt: product.createdAt,

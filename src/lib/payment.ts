@@ -68,6 +68,8 @@ export async function initializePaystackPayment(
         metadata: request.metadata,
         callback_url: request.callbackUrl,
       }),
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
     });
 
     const data = await response.json();
@@ -165,15 +167,18 @@ export async function initializeFlutterwavePayment(
         tx_ref: request.orderId,
         amount: request.amount / 100, // Convert from kobo to naira
         currency: "NGN",
-        redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/verify`,
+        redirect_url: request.callbackUrl || `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/verify`,
         customer: {
           email: request.email,
         },
+        meta: request.metadata,
         customizations: {
           title: "Sell Up Order Payment",
           description: `Order ${request.orderId}`,
         },
       }),
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
     });
 
     const data = await response.json();
@@ -188,7 +193,7 @@ export async function initializeFlutterwavePayment(
     return {
       success: true,
       authorizationUrl: data.data.link,
-      reference: data.data.id,
+      reference: data.data.tx_ref || request.orderId,
     };
   } catch (error) {
     console.error("Flutterwave initialization error:", error);
@@ -204,11 +209,11 @@ export async function initializeFlutterwavePayment(
  */
 export async function verifyFlutterwavePayment(
   config: PaymentConfig,
-  transactionId: string
+  reference: string
 ): Promise<PaymentVerifyResponse> {
   try {
     const response = await fetch(
-      `https://api.flutterwave.com/v3/transactions/${transactionId}/verify`,
+      `https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${encodeURIComponent(reference)}`,
       {
         headers: {
           Authorization: `Bearer ${config.secretKey}`,
@@ -223,7 +228,7 @@ export async function verifyFlutterwavePayment(
         success: false,
         status: "failed",
         amount: 0,
-        reference: transactionId,
+        reference,
         customer: { email: "" },
       };
     }
@@ -246,7 +251,7 @@ export async function verifyFlutterwavePayment(
       success: false,
       status: "failed",
       amount: 0,
-      reference: transactionId,
+      reference,
       customer: { email: "" },
     };
   }
