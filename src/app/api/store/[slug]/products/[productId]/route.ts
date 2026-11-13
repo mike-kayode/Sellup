@@ -75,6 +75,8 @@ export async function GET(
           images: product.images,
           stock: product.stock,
           categoryId: product.categoryId,
+          sku: product.sku,
+          variants: product.variants,
         },
         store: {
           id: store.id,

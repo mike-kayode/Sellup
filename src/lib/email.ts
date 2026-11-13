@@ -10,6 +10,7 @@
 
 export enum EmailTemplate {
   ORDER_CONFIRMATION = "order_confirmation",
+  MERCHANT_ORDER_NOTIFICATION = "merchant_order_notification",
   ORDER_STATUS_UPDATE = "order_status_update",
   CUSTOMER_WELCOME = "customer_welcome",
   STORE_WELCOME = "store_welcome",
@@ -19,6 +20,26 @@ export enum EmailTemplate {
   SUPPORT_REPLY = "support_reply",
   BILLING_PAST_DUE = "billing_past_due",
   ANNOUNCEMENT = "announcement",
+}
+
+export async function sendMerchantOrderNotificationEmail(
+  merchantEmail: string,
+  order: {
+    orderNumber: string;
+    total: string;
+    storeName: string;
+    customerName: string;
+    customerPhone: string;
+    items: { name: string; quantity: number; total: string }[];
+    deliveryAddress: string;
+  }
+): Promise<boolean> {
+  return sendEmail({
+    to: merchantEmail,
+    subject: `New order received: #${order.orderNumber}`,
+    template: EmailTemplate.MERCHANT_ORDER_NOTIFICATION,
+    data: order,
+  });
 }
 
 export interface EmailMessage {
@@ -316,6 +337,25 @@ function buildTemplateBody(
           </table>
           <p>Your order will be processed shortly. You'll receive updates on the status of your delivery.</p>
           <p>If you have any questions, please contact the store directly.</p>
+        </div>
+      `;
+
+    case EmailTemplate.MERCHANT_ORDER_NOTIFICATION:
+      return `
+        <div class="header"><h1>New order received</h1></div>
+        <div class="content">
+          <p>You have received a new order for <strong>${escapeHtml(String(data.storeName || ""))}</strong>.</p>
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <tr><td style="padding: 8px;"><strong>Order</strong></td><td style="padding: 8px; text-align: right;">#${escapeHtml(String(data.orderNumber || ""))}</td></tr>
+            <tr><td style="padding: 8px;"><strong>Total</strong></td><td style="padding: 8px; text-align: right;">₦${Number(data.total || 0).toLocaleString()}</td></tr>
+            <tr><td style="padding: 8px;"><strong>Customer</strong></td><td style="padding: 8px; text-align: right;">${escapeHtml(String(data.customerName || ""))}</td></tr>
+            <tr><td style="padding: 8px;"><strong>Phone</strong></td><td style="padding: 8px; text-align: right;">${escapeHtml(String(data.customerPhone || ""))}</td></tr>
+          </table>
+          <p><strong>Items</strong></p>
+          <ul>${(Array.isArray(data.items) ? data.items : []).map((item: { name?: string; quantity?: number; total?: string }) =>
+            `<li>${escapeHtml(String(item.quantity || 0))} × ${escapeHtml(String(item.name || ""))} — ₦${Number(item.total || 0).toLocaleString()}</li>`
+          ).join("")}</ul>
+          <p><strong>Delivery address:</strong><br />${escapeHtml(String(data.deliveryAddress || "")).replace(/\n/g, "<br />")}</p>
         </div>
       `;
 
@@ -628,6 +668,8 @@ export function renderEmailTemplate(
   const templates: Record<EmailTemplate, (data: any) => string> = {
     [EmailTemplate.ORDER_CONFIRMATION]: (data) =>
       `Your order #${data.orderNumber} has been confirmed. Total: ₦${data.orderTotal}`,
+    [EmailTemplate.MERCHANT_ORDER_NOTIFICATION]: (data) =>
+      `New order #${data.orderNumber} for ${data.storeName}. Total: ₦${data.total}`,
     [EmailTemplate.ORDER_STATUS_UPDATE]: (data) =>
       `Your order #${data.orderNumber} status is now: ${data.status}`,
     [EmailTemplate.CUSTOMER_WELCOME]: (data) =>

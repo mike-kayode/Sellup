@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { products, stores } from "@/db/schema";
-import { eq, count as countProducts } from "drizzle-orm";
+import { categories, products, stores } from "@/db/schema";
+import { and, eq, count as countProducts } from "drizzle-orm";
 import { z } from "zod";
 import { slugify } from "@/lib/utils";
 import { requireAuthenticatedUser } from "@/lib/auth-middleware";
 import { canUseFeature, getProductLimit, normalizePlan } from "@/lib/entitlements";
+
+const variantSchema = z.object({
+  name: z.string().min(1).max(80),
+  options: z.array(z.string().min(1).max(100)).min(1).max(30),
+});
 
 const createProductSchema = z.object({
   storeId: z.string().uuid(),
@@ -18,7 +23,7 @@ const createProductSchema = z.object({
   stock: z.number().optional(),
   sku: z.string().optional(),
   images: z.array(z.string()).optional(),
-  variants: z.array(z.object({})).optional(),
+  variants: z.array(variantSchema).max(20).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -63,6 +68,25 @@ export async function POST(request: NextRequest) {
             limit: productLimit,
           },
           { status: 403 }
+        );
+      }
+    }
+
+    if (validatedData.categoryId) {
+      const [category] = await db
+        .select({ id: categories.id })
+        .from(categories)
+        .where(
+          and(
+            eq(categories.id, validatedData.categoryId),
+            eq(categories.storeId, validatedData.storeId)
+          )
+        )
+        .limit(1);
+      if (!category) {
+        return NextResponse.json(
+          { error: "Category does not belong to this store" },
+          { status: 400 }
         );
       }
     }

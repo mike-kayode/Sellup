@@ -173,9 +173,12 @@ export default function CheckoutPage() {
     }
   }
 
-  function copyOrderDetails() {
-    if (orderMessage) {
-      navigator.clipboard.writeText(decodeURIComponent(orderMessage));
+  async function copyOrderDetails() {
+    if (!orderMessage) return;
+    try {
+      await navigator.clipboard.writeText(orderMessage);
+    } catch {
+      setError("Could not copy order details. Please use the WhatsApp button instead.");
     }
   }
 
@@ -210,6 +213,7 @@ export default function CheckoutPage() {
             {store?.storeName || "the store"}. If it doesn&rsquo;t open
             automatically, tap the button below.
           </p>
+          {error && <p role="alert" className="mb-4 text-sm text-red-600">{error}</p>}
 
           <a
             href={whatsappLink}

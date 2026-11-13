@@ -20,6 +20,8 @@ interface Product {
   stock: number;
   comparePrice?: string;
   categoryId?: string;
+  sku?: string | null;
+  variants?: unknown;
 }
 
 export default function ProductDetailPage() {
@@ -43,7 +45,7 @@ export default function ProductDetailPage() {
       try {
         // Fetch the product scoped to this store
         const res = await fetch(
-          `/api/${slug}/products/${productId}`
+          `/api/store/${slug}/products/${productId}`
         );
         if (res.ok) {
           const data = await res.json();
@@ -198,6 +200,53 @@ export default function ProductDetailPage() {
                   Description
                 </h3>
                 <p className="text-gray-600">{product.description}</p>
+              </div>
+            )}
+
+            {product.sku && (
+              <p className="mb-4 text-sm text-gray-500">SKU: {product.sku}</p>
+            )}
+
+            {Array.isArray(product.variants) && product.variants.length > 0 && (
+              <div className="mb-6">
+                <h3 className="mb-2 font-semibold text-gray-900">Available options</h3>
+                <ul className="space-y-2">
+                  {product.variants.map((variant, index) => {
+                    if (!variant || typeof variant !== "object" || Array.isArray(variant)) {
+                      return null;
+                    }
+                    const variantRecord = variant as Record<string, unknown>;
+                    const options = Array.isArray(variantRecord.options)
+                      ? variantRecord.options.filter(
+                          (option): option is string => typeof option === "string"
+                        )
+                      : [];
+                    if (typeof variantRecord.name === "string" && options.length > 0) {
+                      return (
+                        <li key={index} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                          <span className="font-medium">{variantRecord.name}:</span>{" "}
+                          {options.join(", ")}
+                        </li>
+                      );
+                    }
+                    const attributes = Object.entries(variantRecord)
+                      .filter(([, value]) =>
+                        typeof value === "string" ||
+                        typeof value === "number" ||
+                        typeof value === "boolean"
+                      );
+                    if (attributes.length === 0) return null;
+                    return (
+                      <li key={index} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        {attributes.map(([name, value]) => (
+                          <span key={name} className="mr-3">
+                            <span className="font-medium">{name}:</span> {String(value)}
+                          </span>
+                        ))}
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             )}
 

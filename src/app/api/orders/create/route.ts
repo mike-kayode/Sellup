@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { orders, customers, products, coupons, stores, analyticsEvents, webhooks } from "@/db/schema";
+import { orders, customers, products, coupons, stores, users, analyticsEvents, webhooks } from "@/db/schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { generateOrderNumber, formatPhoneNumber, generateWhatsAppLink, toMinorUnits, fromMinorUnits } from "@/lib/utils";
-import { sendOrderConfirmationEmail } from "@/lib/email";
+import { sendMerchantOrderNotificationEmail, sendOrderConfirmationEmail } from "@/lib/email";
 import { sendWhatsApp } from "@/lib/whatsapp";
 import { triggerWebhooks, WebhookEvent } from "@/lib/webhooks";
 
@@ -43,7 +43,9 @@ export async function POST(request: NextRequest) {
     const storeResult = await db
       .select({
         id: stores.id,
+        userId: stores.userId,
         storeName: stores.storeName,
+        email: stores.email,
         whatsappNumber: stores.whatsappNumber,
         isPublished: stores.isPublished,
         isSuspended: stores.isSuspended,
@@ -74,9 +76,22 @@ export async function POST(request: NextRequest) {
         status: orders.status,
       }).from(orders).where(eq(orders.idempotencyKey, validatedData.idempotencyKey)).limit(1);
       if (existingOrder) {
+        const whatsappMessage = `Hello ${store.storeName}, I placed an order through your store.
+
+Order ID: #${existingOrder.orderNumber}
+Customer: ${validatedData.customerName}
+Phone: ${validatedData.customerPhone}
+Total: ₦${parseFloat(existingOrder.total).toLocaleString()}
+
+Please confirm my order.`;
         return NextResponse.json({
           message: "Order already created",
           order: existingOrder,
+          whatsappMessage,
+          whatsappLink: generateWhatsAppLink(
+            formatPhoneNumber(store.whatsappNumber),
+            whatsappMessage
+          ),
           duplicate: true,
         }, { status: 200 });
       }
@@ -131,6 +146,7 @@ export async function POST(request: NextRequest) {
           storeId: validatedData.storeId,
           name: validatedData.customerName,
           phone: formattedCustomerPhone,
+          whatsapp: formattedCustomerPhone,
           email: validatedData.customerEmail,
           deliveryAddress: validatedData.deliveryAddress,
           city: validatedData.city,
@@ -317,6 +333,31 @@ Order placed through Sell Up.`;
         store.storeName,
         validatedData.customerName
       ).catch((err) => console.error("Order confirmation email failed:", err));
+    }
+
+    let merchantEmail = store.email;
+    if (!merchantEmail) {
+      try {
+        const [storeOwner] = await db
+          .select({ email: users.email })
+          .from(users)
+          .where(eq(users.id, store.userId))
+          .limit(1);
+        merchantEmail = storeOwner?.email || null;
+      } catch (err) {
+        console.error("Merchant email lookup failed:", err);
+      }
+    }
+    if (merchantEmail && createdOrder) {
+      sendMerchantOrderNotificationEmail(merchantEmail, {
+        orderNumber: createdOrder.orderNumber,
+        total: createdOrder.total,
+        storeName: store.storeName,
+        customerName: validatedData.customerName,
+        customerPhone: validatedData.customerPhone,
+        items: orderItems,
+        deliveryAddress: `${validatedData.deliveryAddress}, ${validatedData.city}, ${validatedData.state}`,
+      }).catch((err) => console.error("Merchant order email failed:", err));
     }
 
     // Fire-and-forget WhatsApp notification to the merchant about the new order.

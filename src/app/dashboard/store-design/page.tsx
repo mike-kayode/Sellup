@@ -14,8 +14,10 @@ import {
   Rocket,
   Save,
   Smartphone,
+  Upload,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { validateImageFile } from "@/lib/supabase/storage";
 import { CartProvider } from "@/lib/cart-context";
 import { StorefrontV1 } from "@/components/store-templates/storefront-v1";
 import {
@@ -70,6 +72,7 @@ export default function StoreDesignPage() {
   );
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [copied, setCopied] = useState(false);
   const dirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -238,6 +241,54 @@ export default function StoreDesignPage() {
       },
       body: JSON.stringify(body),
     });
+  };
+
+  const uploadBrandLogo = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const validation = validateImageFile(file, 1024 * 1024);
+    if (!validation.valid) {
+      setNotice({ type: "error", message: validation.error || "Choose a valid logo image." });
+      event.target.value = "";
+      return;
+    }
+
+    setUploadingLogo(true);
+    setNotice(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Your session has expired. Please sign in again.");
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("storeId", selectedStoreId);
+      formData.append("folder", "logos");
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok || typeof result.url !== "string") {
+        throw new Error(result.error || "Logo upload failed.");
+      }
+
+      patchConfig((current) => ({
+        ...current,
+        brand: { ...current.brand, logo: result.url },
+      }));
+      setStore((current) => current ? { ...current, logo: result.url } : current);
+      setNotice({ type: "success", message: "Logo uploaded to your store media." });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Logo upload failed.",
+      });
+    } finally {
+      setUploadingLogo(false);
+      event.target.value = "";
+    }
   };
 
   const publish = async () => {
@@ -429,17 +480,31 @@ export default function StoreDesignPage() {
               </div>
               <div className="sm:col-span-2">
                 <label className={labelCls} htmlFor="brand-logo">
-                  Logo image URL (square, 256px+)
+                  Upload logo (square, 256px+)
                 </label>
-                <input
-                  id="brand-logo"
-                  className={inputCls}
-                  value={config.brand.logo}
-                  placeholder="https://…/logo.png"
-                  onChange={(e) =>
-                    patchConfig((c) => ({ ...c, brand: { ...c.brand, logo: e.target.value } }))
-                  }
-                />
+                <div className="flex flex-wrap items-center gap-3">
+                  {config.brand.logo && (
+                    // eslint-disable-next-line @next/next/no-img-element -- uploaded cPanel logo preview
+                    <img
+                      src={config.brand.logo}
+                      alt="Current store logo"
+                      className="h-14 w-14 rounded-lg border border-slate-200 object-cover"
+                    />
+                  )}
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                    <Upload size={16} aria-hidden />
+                    {uploadingLogo ? "Uploading…" : config.brand.logo ? "Replace logo" : "Choose image"}
+                    <input
+                      id="brand-logo"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      onChange={uploadBrandLogo}
+                      disabled={uploadingLogo}
+                      className="sr-only"
+                    />
+                  </label>
+                  <span className="text-xs text-slate-500">PNG, JPG, WEBP or GIF · max 1 MB</span>
+                </div>
               </div>
               <div>
                 <label className={labelCls} htmlFor="brand-color">

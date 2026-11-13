@@ -2,7 +2,7 @@
 
 /** Storefront v1 — shared mobile template. Design locked. */
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
@@ -67,14 +67,16 @@ export function StorefrontV1({
 }: StorefrontV1Props) {
   const { cart, addToCart, removeFromCart } = useCart();
   const [tab, setTab] = useState<StorefrontTab>("home");
-  const [device, setDevice] = useState<"mobile" | "desktop" | "tablet">("mobile");
-
-  useEffect(() => {
-    const ua = navigator.userAgent;
-    if (/tablet|ipad|playbook|silk/i.test(ua)) setDevice("tablet");
-    else if (/mobi|android|iphone|ipod/i.test(ua)) setDevice("mobile");
-    else setDevice("desktop");
-  }, []);
+  const device = useSyncExternalStore<"mobile" | "desktop" | "tablet">(
+    () => () => {},
+    () => {
+      const ua = navigator.userAgent;
+      if (/tablet|ipad|playbook|silk/i.test(ua)) return "tablet";
+      if (/mobi|android|iphone|ipod/i.test(ua)) return "mobile";
+      return "desktop";
+    },
+    () => "mobile"
+  );
   const [chip, setChip] = useState("all");
   const [showAll, setShowAll] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -145,7 +147,9 @@ export function StorefrontV1({
       <div className="flex min-h-screen justify-center bg-slate-100">
         <AnnouncementBar bar={config.announcementBar} />
         <div
-          className="relative w-full max-w-[430px] bg-white shadow-xl"
+          className={`relative w-full bg-white shadow-xl ${
+            preview ? "max-w-[430px]" : "max-w-[430px] md:max-w-7xl"
+          }`}
           style={themeToCssVars(theme) as CSSProperties}
         >
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-100 bg-white px-4 py-3">
@@ -271,7 +275,7 @@ export function StorefrontV1({
                     }
                   />
                 ) : (
-                  <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                     {gridProducts.map((p) => (
                       <PremiumProductCard
                         key={p.id}
@@ -290,7 +294,7 @@ export function StorefrontV1({
           {tab === "categories" && (
             <section className="px-4 pt-4">
               <h3 className="text-[22px] font-extrabold text-slate-900">Categories</h3>
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {config.categories.map((c) => {
                   const ids = chipIds.get(c.id || c.name);
                   const Icon = presetIcon(c.icon);
@@ -329,7 +333,7 @@ export function StorefrontV1({
               {tab === "account" && (
                 <section
                   aria-label="Customer account"
-                  className="p-4 space-y-4 max-w-[430px] mx-auto"
+                  className="mx-auto max-w-[430px] space-y-4 p-4 lg:max-w-none"
                 >
                   <h2 className="text-[16px] font-extrabold text-slate-900">
                     Your Account
@@ -412,7 +416,7 @@ export function StorefrontV1({
           className={
             preview
               ? "sticky bottom-0 z-40 w-full border-t border-slate-100 bg-white"
-              : "fixed bottom-0 left-0 right-0 z-40 mx-auto w-full max-w-[430px] border-t border-slate-100 bg-white"
+              : "fixed bottom-0 left-0 right-0 z-40 mx-auto w-full max-w-[430px] border-t border-slate-100 bg-white md:max-w-7xl"
           }
         >
           <ul className="flex items-stretch justify-around pt-2">
