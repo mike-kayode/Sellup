@@ -84,6 +84,7 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
     // Plain-text fallback: HTML-only mail is a spam signal for many filters.
     const textContent = emailContent
       .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, "$2: $1")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -295,7 +296,7 @@ function buildEmailContent(
       </head>
       <body>
         <div class="container">
-          {{body}}
+          ${body}
         </div>
       </body>
     </html>
