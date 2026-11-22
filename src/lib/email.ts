@@ -17,6 +17,7 @@ export enum EmailTemplate {
   PASSWORD_RESET = "password_reset",
   EMAIL_VERIFICATION = "email_verification",
   VERIFICATION_CODE = "verification_code",
+  PASSWORD_RESET_CODE = "password_reset_code",
   SUPPORT_REPLY = "support_reply",
   BILLING_PAST_DUE = "billing_past_due",
   ANNOUNCEMENT = "announcement",
@@ -439,6 +440,22 @@ function buildTemplateBody(
         </div>
       `;
 
+    case EmailTemplate.PASSWORD_RESET_CODE:
+      return `
+        <div class="header"><h1>Reset Your Password</h1></div>
+        <div class="content">
+          <p>Hi${data.name ? ` ${escapeHtml(String(data.name))}` : ""},</p>
+          <p>Use the code below to confirm your password reset request:</p>
+          <div style="text-align: center; margin: 28px 0;">
+            <span style="display: inline-block; font-size: 40px; font-weight: 700; letter-spacing: 14px; color: #111; background: #ffffff; border: 2px dashed #25D366; border-radius: 12px; padding: 16px 8px 16px 22px;">${data.code}</span>
+          </div>
+          <p style="color: #666; font-size: 13px;">
+            This code expires in ${data.expiresInMinutes || 10} minutes.
+            If you didn't request a password reset, you can safely ignore this email.
+          </p>
+        </div>
+      `;
+
     case EmailTemplate.SUPPORT_REPLY:
       return `
         <div class="header"><h1>Support ticket update</h1></div>
@@ -660,6 +677,28 @@ export async function sendVerificationCodeEmail(
 }
 
 /**
+ * Send the 6-digit password reset code (no link / no URL).
+ */
+export async function sendPasswordResetCodeEmail(
+  email: string,
+  code: string,
+  name?: string
+): Promise<boolean> {
+  return sendEmail({
+    to: email,
+    // Keep the code out of the subject — inbox previews leak it, and codes in
+    // subjects are a known spam-filter trigger.
+    subject: `Your Sell Up password reset code`,
+    template: EmailTemplate.PASSWORD_RESET_CODE,
+    data: {
+      code,
+      name,
+      expiresInMinutes: 10,
+    },
+  });
+}
+
+/**
  * Email template renderer
  */
 export function renderEmailTemplate(
@@ -683,6 +722,8 @@ export function renderEmailTemplate(
       `Verify your email: ${data.verificationLink}`,
     [EmailTemplate.VERIFICATION_CODE]: (data) =>
       `Your Sell Up verification code: ${data.code}`,
+    [EmailTemplate.PASSWORD_RESET_CODE]: (data) =>
+      `Your Sell Up password reset code: ${data.code}`,
     [EmailTemplate.SUPPORT_REPLY]: (data) =>
       `Our support team replied to "${data.subject}".`,
     [EmailTemplate.BILLING_PAST_DUE]: (data) =>
