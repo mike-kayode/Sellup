@@ -16,6 +16,14 @@ export function getBaseDomain(): string {
   return (process.env.NEXT_PUBLIC_BASE_DOMAIN || "sellup.ng").toLowerCase();
 }
 
+export function getSiteUrl(): string {
+  const raw =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    `https://${getBaseDomain()}`;
+  return raw.replace(/\/+$/, "");
+}
+
 export function storeSubdomainsEnabled(): boolean {
   const v = (process.env.NEXT_PUBLIC_STORE_SUBDOMAINS || "").toLowerCase();
   return v === "true" || v === "1" || v === "enabled";

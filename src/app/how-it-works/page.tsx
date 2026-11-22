@@ -1,6 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Check, MessageCircle, Settings, Store } from "@/components/icons/lucide-icons";
 import { MarketingCta, MarketingHero, MarketingShell } from "@/components/marketing-shell";
+
+export const metadata: Metadata = {
+  title: "How It Works",
+  description:
+    "See how Sell Up works: create your store, add products, and receive customer orders directly on WhatsApp in minutes.",
+  alternates: {
+    canonical: "/how-it-works",
+  },
+};
 
 const steps = [
   [Store, "Create your store", "Sign up, add your business details, choose a store name and publish your online home."],

@@ -1,6 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Check } from "@/components/icons/lucide-icons";
 import { MarketingHero, MarketingShell } from "@/components/marketing-shell";
+
+export const metadata: Metadata = {
+  title: "Pricing",
+  description:
+    "Simple, transparent Sell Up pricing. Start free and choose a plan for your online store, WhatsApp orders, products, and business growth.",
+  alternates: {
+    canonical: "/pricing",
+  },
+};
 
 const plans = [
   {

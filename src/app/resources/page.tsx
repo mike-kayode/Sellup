@@ -1,6 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, BookOpen, HelpCircle, ShieldCheck } from "@/components/icons/lucide-icons";
 import { MarketingCta, MarketingHero, MarketingShell } from "@/components/marketing-shell";
+
+export const metadata: Metadata = {
+  title: "Resources",
+  description:
+    "Guides, tips, and resources to help you set up your Sell Up store, get orders, and grow your business online.",
+  alternates: {
+    canonical: "/resources",
+  },
+};
 
 const resources = [
   [BookOpen, "Getting started guide", "Everything you need to set up your first store, add products and start receiving orders."],

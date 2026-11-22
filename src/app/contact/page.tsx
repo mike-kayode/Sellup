@@ -1,5 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingHero, MarketingShell } from "@/components/marketing-shell";
+
+export const metadata: Metadata = {
+  title: "Contact",
+  description:
+    "Contact the Sell Up team for help with your store, pricing, payments, and merchant support.",
+  alternates: {
+    canonical: "/contact",
+  },
+};
 
 const cards = [
   {

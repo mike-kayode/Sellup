@@ -1,5 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingHero, MarketingShell } from "@/components/marketing-shell";
+
+export const metadata: Metadata = {
+  title: "Terms of Use",
+  description:
+    "Review Sell Up's terms of use for creating stores, selling products, payments, and using the Sell Up platform.",
+  alternates: {
+    canonical: "/terms",
+  },
+};
 
 const sections: { title: string; body: string[] }[] = [
   {

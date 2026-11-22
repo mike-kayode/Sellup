@@ -1,5 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingHero, MarketingShell } from "@/components/marketing-shell";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description:
+    "Read Sell Up's privacy policy to understand how we collect, use, and protect personal and business data on our platform.",
+  alternates: {
+    canonical: "/privacy",
+  },
+};
 
 const sections: { title: string; body: string[] }[] = [
   {

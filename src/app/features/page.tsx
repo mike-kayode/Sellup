@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- image optimizer is unavailable on the standalone server */
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -11,6 +12,15 @@ import {
 } from "@/components/icons/lucide-icons";
 import { MarketingCta, MarketingHero, MarketingShell } from "@/components/marketing-shell";
 import { WhatsAppIcon } from "@/components/icons/whatsapp";
+
+export const metadata: Metadata = {
+  title: "Features",
+  description:
+    "Explore Sell Up features: WhatsApp ordering, product management, customer tracking, discounts, analytics, and customizable storefronts for your business.",
+  alternates: {
+    canonical: "/features",
+  },
+};
 
 const features = [
   [Zap, "Professional Store", "Beautiful, mobile-friendly stores that build trust and increase sales."],
