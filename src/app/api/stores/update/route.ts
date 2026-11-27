@@ -27,7 +27,8 @@ const updateStoreSchema = z.object({
   logo: z.string().url().max(500).optional(),
   aboutText: z.string().optional(),
   isPublished: z.boolean().optional(),
-  plan: z.string().optional(),
+  // NOTE: `plan` is deliberately not accepted here. Only billing/verify and
+  // the payment webhook may change a store's plan.
   // Product listing template for the public storefront.
   template: z.enum(["basic", "showcase"]).optional(),
 });

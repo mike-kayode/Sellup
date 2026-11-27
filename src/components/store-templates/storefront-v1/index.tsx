@@ -38,7 +38,6 @@ import {
   EmptyState,
   HeroBanner,
   presetIcon,
-  productImage,
   VerifiedBadge,
   type StorefrontCategory,
   type StorefrontProduct,
@@ -65,7 +64,7 @@ export function StorefrontV1({
   theme,
   preview = false,
 }: StorefrontV1Props) {
-  const { cart, addToCart, removeFromCart } = useCart();
+  const { cart, removeFromCart } = useCart();
   const [tab, setTab] = useState<StorefrontTab>("home");
   const device = useSyncExternalStore<"mobile" | "desktop" | "tablet">(
     () => () => {},
@@ -120,15 +119,6 @@ export function StorefrontV1({
 
   const gridProducts =
     showAll || chip !== "all" || query.trim() ? filtered : filtered.slice(0, 8);
-
-  const add = (p: StorefrontProduct) =>
-    addToCart({
-      productId: p.id,
-      name: p.name,
-      price: p.price,
-      image: productImage(p) ?? undefined,
-      quantity: 1,
-    });
 
   const productHref = (id: string) =>
     preview ? null : `/${store.storeSlug}/products/${id}`;
@@ -203,7 +193,7 @@ export function StorefrontV1({
           <button
             type="button"
             aria-label={`Cart, ${cartCount} items`}
-            onClick={() => setTab("home")}
+            onClick={() => setTab("cart")}
             className="relative grid h-10 w-10 place-items-center rounded-full text-slate-700"
           >
             <ShoppingCart size={22} />
@@ -281,7 +271,6 @@ export function StorefrontV1({
                         key={p.id}
                         product={p}
                         storeSlug={store.storeSlug}
-                        onAdd={() => add(p)}
                         className="h-full"
                       />
                     ))}
@@ -330,7 +319,7 @@ export function StorefrontV1({
             </section>
           )}
 
-              {tab === "account" && (
+              {(tab === "account" || tab === "cart") && (
                 <section
                   aria-label="Customer account"
                   className="mx-auto max-w-[430px] space-y-4 p-4 lg:max-w-none"

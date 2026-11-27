@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Package, Plus, Pencil, Eye, Upload, Trash2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { uploadImage, validateImageFile } from "@/lib/supabase/storage";
+import { validateImageFile } from "@/lib/supabase/storage";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -211,11 +211,31 @@ export default function ProductsPage() {
         setUploadingImages(true);
         for (const file of imageFiles) {
           try {
-            const result = await uploadImage(selectedStoreId, file, "products");
-            imageUrls.push(result.url);
+            // Same server route the logo/banner uploads use (cPanel storage).
+            // The old direct-to-Supabase-Storage upload is what was failing.
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("storeId", selectedStoreId);
+            fd.append("folder", "products");
+            const up = await fetch("/api/upload", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+              body: fd,
+            });
+            const upData = await up.json().catch(() => ({}));
+            if (!up.ok || typeof upData?.url !== "string") {
+              throw new Error(
+                (typeof upData?.error === "string" && upData.error) ||
+                  `Upload failed (${up.status})`
+              );
+            }
+            imageUrls.push(upData.url);
           } catch (uploadErr) {
             console.error("Image upload error:", uploadErr);
-            setError("Failed to upload product images. Please try again.");
+            const reason = uploadErr instanceof Error ? uploadErr.message : "";
+            setError(
+              `Failed to upload "${file.name}"${reason ? `: ${reason}` : ""}. Please try again.`
+            );
             setSaving(false);
             setUploadingImages(false);
             return;

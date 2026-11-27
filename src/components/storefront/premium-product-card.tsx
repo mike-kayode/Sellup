@@ -97,7 +97,7 @@ export function PremiumProductCard({
             Save {Math.round((savings / compare) * 100)}%
           </span>
         )}
-        {outOfStock || !isActive && (
+        {(outOfStock || !isActive) && (
           <span className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm text-sm font-bold text-white">
             Sold out
           </span>

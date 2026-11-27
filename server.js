@@ -71,11 +71,55 @@ function serveNextStatic(req, res) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Merchant uploads (/uploads/*) served from CPANEL_UPLOAD_DIRECTORY, which
+// should live OUTSIDE the release folder (e.g. /home/<user>/sellup-uploads)
+// so deploys and rollbacks never delete product images. Only image types are
+// served, with nosniff, so nothing uploaded can run as a script or page.
+// ---------------------------------------------------------------------------
+const UPLOAD_ROOT = process.env.CPANEL_UPLOAD_DIRECTORY
+  ? path.resolve(process.env.CPANEL_UPLOAD_DIRECTORY)
+  : null;
+const UPLOAD_MIME = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+};
+
+function serveUpload(req, res) {
+  if (!UPLOAD_ROOT) return false;
+  try {
+    const pathname = (req.url || "").split("?")[0];
+    if (!pathname.startsWith("/uploads/")) return false;
+    if (req.method !== "GET" && req.method !== "HEAD") return false;
+    const rel = decodeURIComponent(pathname.slice("/uploads/".length));
+    const file = path.normalize(path.join(UPLOAD_ROOT, rel));
+    if (!file.startsWith(UPLOAD_ROOT + path.sep)) return false;
+    const type = UPLOAD_MIME[path.extname(file).toLowerCase()];
+    if (!type) return false;
+    const st = fs.statSync(file);
+    if (!st.isFile()) return false;
+    res.statusCode = 200;
+    res.setHeader("Content-Type", type);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("Content-Length", st.size);
+    if (req.method === "HEAD") { res.end(); return true; }
+    fs.createReadStream(file).pipe(res);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 const http = require("http");
 const origCreateServer = http.createServer;
 http.createServer = function (handler) {
   const wrapped = (req, res) => {
     if (serveNextStatic(req, res)) return;
+    if (serveUpload(req, res)) return;
     return handler(req, res);
   };
   return origCreateServer.call(http, wrapped);

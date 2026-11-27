@@ -17,6 +17,48 @@ import {
   validateFlutterwaveWebhookSignature,
 } from "@/lib/payment";
 import { normalizePlan } from "@/lib/entitlements";
+import { decimalToMinorUnits } from "@/lib/admin-payments";
+
+type TrustedPayment =
+  | { kind: "subscription"; storeId: string; plan: string; interval: string }
+  | { kind: "order"; orderId: string }
+  | null;
+
+/**
+ * Never trust metadata in the webhook body: anyone holding the public key can
+ * start a charge with any amount and metadata, and the gateway will then send
+ * a genuinely signed webhook. Plan/store/order come only from rows the server
+ * created, and the paid amount must match what the server expected.
+ */
+async function resolveTrustedPayment(
+  gateway: "paystack" | "flutterwave",
+  reference: string,
+  paidMinor: number,
+  currency: string | undefined,
+  claimedOrderId: unknown,
+): Promise<TrustedPayment> {
+  if (!reference || !Number.isSafeInteger(paidMinor) || paidMinor <= 0) return null;
+  if (currency && currency.toUpperCase() !== "NGN") return null;
+
+  const [payment] = await db.select().from(payments)
+    .where(eq(payments.reference, reference)).limit(1);
+  if (payment) {
+    const meta = (payment.metadata || {}) as { type?: string; plan?: string; interval?: string };
+    if (payment.gateway !== gateway || payment.status !== "pending") return null;
+    if (decimalToMinorUnits(String(payment.amount)) !== paidMinor) return null;
+    if (meta.type !== "subscription" || !meta.plan) return null;
+    return { kind: "subscription", storeId: payment.storeId, plan: meta.plan, interval: meta.interval === "year" ? "year" : "month" };
+  }
+
+  if (typeof claimedOrderId === "string" && claimedOrderId) {
+    const [order] = await db.select({ id: orders.id, total: orders.total, paymentStatus: orders.paymentStatus })
+      .from(orders).where(eq(orders.id, claimedOrderId)).limit(1);
+    if (!order || order.paymentStatus === "paid") return null;
+    if (decimalToMinorUnits(String(order.total)) !== paidMinor) return null;
+    return { kind: "order", orderId: order.id };
+  }
+  return null;
+}
 
 async function releaseOrderStock(orderId: string) {
   await db.transaction(async (tx) => {
@@ -67,6 +109,10 @@ async function finalizePayment(reference: string, paidAt: Date) {
 }
 
 export async function POST(request: NextRequest) {
+  // Flutterwave delivers webhooks as POST with a verif-hash header.
+  if (!request.headers.get("x-paystack-signature") && request.headers.get("verif-hash")) {
+    return PUT(request);
+  }
   try {
     const signature = request.headers.get("x-paystack-signature") || "";
     const body = await request.text();
@@ -88,9 +134,19 @@ export async function POST(request: NextRequest) {
     if (event.event === "charge.success") {
       const transaction = event.data;
       const reference = transaction.reference;
-      const metadata = transaction.metadata || transaction.meta || {};
-      const storeId = metadata.storeId;
-      const plan = metadata.plan;
+      const rawMeta = transaction.metadata || transaction.meta || {};
+      const trusted = transaction.status === "success"
+        ? await resolveTrustedPayment("paystack", reference, Number(transaction.amount), transaction.currency, rawMeta.orderId)
+        : null;
+      if (!trusted) {
+        console.warn(`Paystack webhook ignored (unverified or already processed): ${reference}`);
+        return NextResponse.json({ message: "Ignored" }, { status: 200 });
+      }
+      const metadata = trusted.kind === "subscription"
+        ? { interval: trusted.interval, orderId: undefined as string | undefined }
+        : { interval: undefined, orderId: trusted.orderId };
+      const storeId = trusted.kind === "subscription" ? trusted.storeId : undefined;
+      const plan = trusted.kind === "subscription" ? trusted.plan : undefined;
       const now = new Date();
 
       if (storeId) {
@@ -163,7 +219,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (metadata.orderId) {
-        await releaseOrderStock(metadata.orderId);
+        // A successful payment must not restock or cancel the order.
         await db
           .update(orders)
           .set({
@@ -221,7 +277,9 @@ export async function PUT(request: NextRequest) {
     const body = await request.text();
     const secret = process.env.FLUTTERWAVE_WEBHOOK_SECRET || "";
 
-    if (!validateFlutterwaveWebhookSignature(body, signature, secret)) {
+    // Refuse outright when no secret is configured: an HMAC with an empty
+    // key is something anyone can compute.
+    if (!secret || !validateFlutterwaveWebhookSignature(body, signature, secret)) {
       return NextResponse.json(
         { error: "Invalid signature" },
         { status: 401 }
@@ -233,9 +291,21 @@ export async function PUT(request: NextRequest) {
     if (event.event === "charge.completed") {
       const transaction = event.data;
       const txRef = transaction.tx_ref;
-      const metadata = transaction.meta || transaction.metadata || {};
-      const storeId = metadata.storeId;
-      const plan = metadata.plan;
+      const rawMeta = transaction.meta || transaction.metadata || {};
+      // Flutterwave reports amounts in major units (naira).
+      const paidMinor = Math.round(Number(transaction.amount) * 100);
+      const trusted = transaction.status === "successful"
+        ? await resolveTrustedPayment("flutterwave", txRef, paidMinor, transaction.currency, rawMeta.orderId)
+        : null;
+      if (!trusted) {
+        console.warn(`Flutterwave webhook ignored (unverified or already processed): ${txRef}`);
+        return NextResponse.json({ message: "Ignored" }, { status: 200 });
+      }
+      const metadata = trusted.kind === "subscription"
+        ? { interval: trusted.interval, orderId: undefined as string | undefined }
+        : { interval: undefined, orderId: trusted.orderId };
+      const storeId = trusted.kind === "subscription" ? trusted.storeId : undefined;
+      const plan = trusted.kind === "subscription" ? trusted.plan : undefined;
       const now = new Date();
 
       if (storeId) {

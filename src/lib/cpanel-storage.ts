@@ -65,8 +65,26 @@ const IMAGE_SIGNATURES: Record<string, number[] | null> = {
   "image/jpeg": [0xff, 0xd8, 0xff],
   "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
   "image/webp": null,
-  "image/gif": [0x47, 0x49, 0x46, 0x38, 0x37, 0x61],
+  // "GIF8" — both GIF87a and GIF89a (the old check rejected every GIF89a,
+  // which is nearly all GIFs).
+  "image/gif": [0x47, 0x49, 0x46, 0x38],
 };
+
+// The stored extension comes from the *validated* MIME type, never from the
+// client's file name, so "photo.php8" with a PNG header can't land on disk
+// as an executable script.
+const EXT_FOR_MIME: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+};
+
+if (!process.env.CPANEL_UPLOAD_DIRECTORY && process.env.NODE_ENV === "production") {
+  console.warn(
+    "[cpanel-storage] CPANEL_UPLOAD_DIRECTORY is not set: uploads go inside the release folder and will be lost on the next deploy."
+  );
+}
 
 const SCRIPT_EXTENSIONS = new Set([
   ".js", ".jsx", ".ts", ".tsx", ".php", ".py", ".rb", ".pl", ".sh", ".cgi",
@@ -133,12 +151,16 @@ export function validateUploadFile(
   return { valid: true };
 }
 
-function generateFileName(originalName: string): string {
+function generateFileName(originalName: string, mimeType: string): string {
   const randomBytes = crypto.randomBytes(16).toString("hex");
   const timestamp = Date.now();
-  const ext = path.extname(originalName).toLowerCase();
-  const base = safeFileName(path.basename(originalName, ext));
-  return `${timestamp}-${randomBytes}-${base}${ext}`;
+  const originalExt = path.extname(originalName);
+  const base = safeFileName(path.basename(originalName, originalExt))
+    .replace(/\./g, "_")
+    .slice(0, 60);
+  const ext = EXT_FOR_MIME[mimeType];
+  if (!ext) throw new Error("Unsupported file type.");
+  return `${timestamp}-${randomBytes}-${base || "image"}${ext}`;
 }
 
 function buildRelativePath(folder: string, fileName: string): string {
@@ -173,7 +195,7 @@ export async function uploadToCpanel(
 
   ensureUploadDir();
 
-  const safeName = generateFileName(fileName);
+  const safeName = generateFileName(fileName, mimeType);
   const relativePath = buildRelativePath(folder, safeName);
   const fullPath = getFullPath(relativePath);
 

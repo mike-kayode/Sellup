@@ -331,12 +331,13 @@ export function validatePaystackWebhookSignature(
   signature: string,
   secret: string
 ): boolean {
+  if (!secret || !signature) return false;
   const crypto = require("crypto");
   const hash = crypto
     .createHmac("sha512", secret)
     .update(body)
     .digest("hex");
-  return hash === signature;
+  return safeEqual(hash, signature);
 }
 
 /**
@@ -347,10 +348,20 @@ export function validateFlutterwaveWebhookSignature(
   signature: string,
   secret: string
 ): boolean {
+  if (!secret || !signature) return false;
+  // Flutterwave v3 sends the configured "secret hash" verbatim in verif-hash.
+  // An HMAC-SHA256 hex digest is also accepted for compatibility.
   const crypto = require("crypto");
   const hash = crypto
     .createHmac("sha256", secret)
     .update(body)
     .digest("hex");
-  return hash === signature;
+  return safeEqual(signature, secret) || safeEqual(hash, signature);
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const crypto = require("crypto");
+  const ab = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  return ab.length === bb.length && ab.length > 0 && crypto.timingSafeEqual(ab, bb);
 }
