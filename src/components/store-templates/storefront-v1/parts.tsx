@@ -47,6 +47,8 @@ export interface StorefrontProduct {
   id: string;
   name: string;
   price: string;
+  comparePrice?: string | null;
+  description?: string | null;
   images?: unknown;
   stock?: number | null;
   isFeatured?: boolean | null;

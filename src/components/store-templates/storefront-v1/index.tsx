@@ -1,6 +1,10 @@
 "use client";
 
-/** Storefront v1 — shared mobile template. Design locked. */
+/**
+ * Storefront v1. Phones (<1024px) and the editor preview get the locked
+ * mobile template; desktop screens get <DesktopStorefront>. Both are
+ * server-rendered and switched with CSS, so there is no layout flash.
+ */
 
 import { useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
@@ -32,6 +36,7 @@ import { ThemeProvider, useTheme } from "@/components/storefront/theme-provider"
 import { AnnouncementBar } from "@/components/storefront/announcement-bar";
 import { TrustBadges } from "@/components/storefront/trust-badges";
 import { PremiumProductCard } from "@/components/storefront/premium-product-card";
+import { DesktopStorefront } from "./desktop";
 import {
   BrandAvatar,
   CategoryChips,
@@ -54,6 +59,9 @@ export interface StorefrontV1Props {
   theme: StorefrontTheme;
   /** Product links are inert in preview mode. */
   preview?: boolean;
+  /** From ?q= / ?category= (desktop header search and footer links). */
+  initialQuery?: string;
+  initialCategory?: string;
 }
 
 export function StorefrontV1({
@@ -63,6 +71,8 @@ export function StorefrontV1({
   config,
   theme,
   preview = false,
+  initialQuery = "",
+  initialCategory = "all",
 }: StorefrontV1Props) {
   const { cart, removeFromCart } = useCart();
   const [tab, setTab] = useState<StorefrontTab>("home");
@@ -134,11 +144,26 @@ export function StorefrontV1({
 
   return (
     <ThemeProvider defaultMode={config.themeMode}>
-      <div className="flex min-h-screen justify-center bg-slate-100">
-        <AnnouncementBar bar={config.announcementBar} />
+      {!preview && (
+        <div className="hidden lg:block" style={themeToCssVars(theme) as CSSProperties}>
+          <DesktopStorefront
+            store={store}
+            products={products}
+            categories={categories}
+            config={config}
+            theme={theme}
+            initialQuery={initialQuery}
+            initialCategory={initialCategory}
+          />
+        </div>
+      )}
+      <div className={`flex min-h-screen flex-col items-center bg-slate-100 ${preview ? "" : "lg:hidden"}`}>
+        <div className="w-full max-w-[430px] md:max-w-none">
+          <AnnouncementBar bar={config.announcementBar} />
+        </div>
         <div
           className={`relative w-full bg-white shadow-xl ${
-            preview ? "max-w-[430px]" : "max-w-[430px] md:max-w-7xl"
+            preview ? "max-w-[430px]" : "max-w-[430px] md:max-w-3xl"
           }`}
           style={themeToCssVars(theme) as CSSProperties}
         >
@@ -405,7 +430,7 @@ export function StorefrontV1({
           className={
             preview
               ? "sticky bottom-0 z-40 w-full border-t border-slate-100 bg-white"
-              : "fixed bottom-0 left-0 right-0 z-40 mx-auto w-full max-w-[430px] border-t border-slate-100 bg-white md:max-w-7xl"
+              : "fixed bottom-0 left-0 right-0 z-40 mx-auto w-full max-w-[430px] border-t border-slate-100 bg-white md:max-w-3xl"
           }
         >
           <ul className="flex items-stretch justify-around pt-2">
@@ -457,20 +482,20 @@ export function StorefrontV1({
             Powered by SellUp
           </div>
         </nav>
-        {/* WhatsApp chat button (Phase 2.1) */}
-        {config.whatsappChat && (
-          <WhatsAppChatButton
-            config={config.whatsappChat}
-            store={{
-              storeName: store.storeName,
-              storeSlug: store.storeSlug,
-            }}
-            page={tab === "cart" ? "cart" : "home"}
-            device={device}
-          />
-        )}
       </div>
     </div>
+      {/* WhatsApp chat button (Phase 2.1) */}
+      {config.whatsappChat && (
+        <WhatsAppChatButton
+          config={config.whatsappChat}
+          store={{
+            storeName: store.storeName,
+            storeSlug: store.storeSlug,
+          }}
+          page={tab === "cart" ? "cart" : "home"}
+          device={device}
+        />
+      )}
     </ThemeProvider>
   );
 }

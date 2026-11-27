@@ -1,359 +1,74 @@
-"use client";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { loadProductDetail, loadStorefrontFrame } from "@/lib/storefront/load";
+import { ProductDetail } from "./product-detail";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { ShoppingCart, ArrowLeft, Star } from "lucide-react";
-import { useCart } from "@/lib/cart-context";
-import { WhatsAppChatButton } from "@/components/storefront/whatsapp-chat-button";
+export const dynamic = "force-dynamic";
 
-import Link from "next/link";
-
-/* eslint-disable @next/next/no-img-element */
-
-interface Product {
-  id: string;
-  storeId: string;
-  name: string;
-  price: string;
-  description?: string;
-  images: string[];
-  stock: number;
-  comparePrice?: string;
-  categoryId?: string;
-  sku?: string | null;
-  variants?: unknown;
+interface Props {
+  params: Promise<{ slug: string; productId: string }>;
 }
 
-export default function ProductDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const slug = params.slug as string;
-  const productId = params.productId as string;
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug, productId } = await params;
+  const frame = await loadStorefrontFrame(slug);
+  if (!frame) return { title: "Product not found", robots: { index: false } };
+  const data = await loadProductDetail(frame.store.id, productId);
+  if (!data) return { title: "Product not found", robots: { index: false } };
+  const { product } = data;
+  const storeName = frame.config.brand.name || frame.store.storeName;
+  const description = (product.description || `Buy ${product.name} from ${storeName}.`).slice(0, 160);
+  return {
+    title: `${product.name} | ${storeName}`,
+    description,
+    alternates: { canonical: `/${slug}/products/${product.id}` },
+    openGraph: {
+      title: product.name,
+      description,
+      type: "website",
+      images: product.images[0] ? [product.images[0]] : undefined,
+    },
+  };
+}
 
-  const [quantity, setQuantity] = useState(1);
-  const [product, setProduct] = useState<Product | null>(null);
-  const [store, setStore] = useState<{
-    storeName: string;
-    storeSlug: string;
-    whatsappNumber: string | null;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [added, setAdded] = useState(false);
+export default async function ProductPage({ params }: Props) {
+  const { slug, productId } = await params;
+  const frame = await loadStorefrontFrame(slug);
+  if (!frame) notFound();
+  const data = await loadProductDetail(frame.store.id, productId);
+  if (!data) notFound();
 
-  useEffect(() => {
-    async function loadProduct() {
-      try {
-        // Fetch the product scoped to this store
-        const res = await fetch(
-          `/api/store/${slug}/products/${productId}`
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setProduct(data.product);
-          setStore({
-            storeName: data.store?.storeName ?? slug,
-            storeSlug: slug,
-            whatsappNumber: data.store?.whatsappNumber ?? null,
-          });
-        } else {
-          router.push(`/${slug}`);
-        }
-      } catch {
-        router.push(`/${slug}`);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadProduct();
-  }, [slug, productId, router]);
-
-  const { addToCart } = useCart();
-
-  function handleAddToCart() {
-    if (!product) return;
-    addToCart({
-      productId: product.id,
-      name: product.name,
-      price: product.price,
-      quantity,
-      image: product.images?.[0],
-    });
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-12">
-          <div className="grid md:grid-cols-2 gap-12">
-            <div className="bg-gray-100 rounded-2xl aspect-square animate-pulse" />
-            <div className="space-y-4">
-              <div className="h-10 bg-gray-200 rounded animate-pulse" />
-              <div className="h-6 bg-gray-200 rounded animate-pulse w-1/2" />
-              <div className="h-8 bg-gray-200 rounded animate-pulse w-1/3" />
-              <div className="h-24 bg-gray-200 rounded animate-pulse" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!product) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-6">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Product Not Found
-          </h1>
-          <Link href={`/${slug}`} className="btn-primary inline-block">
-            Back to Store
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  const { product } = data;
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    image: product.images,
+    description: product.description || undefined,
+    sku: product.sku || undefined,
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "NGN",
+      price: Number(product.price),
+      availability: (product.stock ?? 0) > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    },
+  };
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Navigation */}
-      <div className="border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-medium"
-          >
-            <ArrowLeft size={20} /> Back
-          </button>
-        </div>
-      </div>
-
-      {/* Product Detail */}
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid md:grid-cols-2 gap-12">
-          {/* Product Image */}
-          <div>
-            <div className="bg-gray-100 rounded-2xl aspect-square flex items-center justify-center mb-4">
-              {product.images && product.images.length > 0 ? (
-                <img
-                  src={product.images[0]}
-                  alt={product.name}
-                  className="w-full h-full object-cover rounded-2xl"
-                />
-              ) : (
-                <div className="text-gray-400 text-center">
-                  <p className="text-lg">No image available</p>
-                </div>
-              )}
-            </div>
-            {product.images && product.images.length > 1 && (
-              <div className="grid grid-cols-4 gap-4">
-                {product.images.map((img, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-gray-100 rounded-lg aspect-square cursor-pointer hover:opacity-80"
-                  >
-                    <img
-                      src={img}
-                      alt="Product"
-                      className="w-full h-full object-cover rounded-lg"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Product Info */}
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">
-              {product.name}
-            </h1>
-
-            {/* Price */}
-            <div className="mb-6">
-              <div className="flex items-baseline gap-3 mb-2">
-                <p className="text-3xl font-bold text-[#25D366]">
-                  ₦{parseFloat(product.price).toLocaleString()}
-                </p>
-                {product.comparePrice && (
-                  <p className="text-lg text-gray-400 line-through">
-                    ₦{parseFloat(product.comparePrice).toLocaleString()}
-                  </p>
-                )}
-              </div>
-              {product.comparePrice && (
-                <p className="text-sm text-[#25D366] font-semibold">
-                  Save ₦
-                  {(
-                    parseFloat(product.comparePrice) - parseFloat(product.price)
-                  ).toLocaleString()}
-                </p>
-              )}
-            </div>
-
-            {/* Description */}
-            {product.description && (
-              <div className="mb-6">
-                <h3 className="font-semibold text-gray-900 mb-2">
-                  Description
-                </h3>
-                <p className="text-gray-600">{product.description}</p>
-              </div>
-            )}
-
-            {product.sku && (
-              <p className="mb-4 text-sm text-gray-500">SKU: {product.sku}</p>
-            )}
-
-            {Array.isArray(product.variants) && product.variants.length > 0 && (
-              <div className="mb-6">
-                <h3 className="mb-2 font-semibold text-gray-900">Available options</h3>
-                <ul className="space-y-2">
-                  {product.variants.map((variant, index) => {
-                    if (!variant || typeof variant !== "object" || Array.isArray(variant)) {
-                      return null;
-                    }
-                    const variantRecord = variant as Record<string, unknown>;
-                    const options = Array.isArray(variantRecord.options)
-                      ? variantRecord.options.filter(
-                          (option): option is string => typeof option === "string"
-                        )
-                      : [];
-                    if (typeof variantRecord.name === "string" && options.length > 0) {
-                      return (
-                        <li key={index} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                          <span className="font-medium">{variantRecord.name}:</span>{" "}
-                          {options.join(", ")}
-                        </li>
-                      );
-                    }
-                    const attributes = Object.entries(variantRecord)
-                      .filter(([, value]) =>
-                        typeof value === "string" ||
-                        typeof value === "number" ||
-                        typeof value === "boolean"
-                      );
-                    if (attributes.length === 0) return null;
-                    return (
-                      <li key={index} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                        {attributes.map(([name, value]) => (
-                          <span key={name} className="mr-3">
-                            <span className="font-medium">{name}:</span> {String(value)}
-                          </span>
-                        ))}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-
-            {/* Stock Status */}
-            <div className="mb-6">
-              {product.stock === 0 ? (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 font-medium">
-                  Out of Stock
-                </div>
-              ) : product.stock < 10 ? (
-                <p className="text-sm text-orange-600 font-medium">
-                  Only {product.stock} left in stock!
-                </p>
-              ) : (
-                <p className="text-sm text-green-600 font-medium">In Stock</p>
-              )}
-            </div>
-
-            {/* Add to Cart */}
-            <div className="space-y-4 mb-8">
-              {product.stock > 0 && (
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center border border-gray-200 rounded-xl">
-                    <button
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      className="px-4 py-2 text-gray-600 hover:bg-gray-100"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="number"
-                      value={quantity}
-                      onChange={(e) =>
-                        setQuantity(Math.max(1, parseInt(e.target.value) || 1))
-                      }
-                      className="w-16 text-center border-0 focus:outline-none"
-                      min="1"
-                      max={product.stock}
-                    />
-                    <button
-                      onClick={() =>
-                        setQuantity(Math.min(product.stock, quantity + 1))
-                      }
-                      className="px-4 py-2 text-gray-600 hover:bg-gray-100"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {product.stock > 0 ? (
-                <button
-                  onClick={handleAddToCart}
-                  className="w-full btn-primary flex items-center justify-center gap-2 text-lg py-3"
-                >
-                  <ShoppingCart size={24} />
-                  {added ? "Added ✓" : "Add to Cart"}
-                </button>
-              ) : (
-                <button
-                  disabled
-                  className="w-full py-3 bg-gray-200 text-gray-600 font-semibold rounded-xl cursor-not-allowed"
-                >
-                  Out of Stock
-                </button>
-              )}
-
-              <Link
-                href={`/${slug}/checkout`}
-                className="w-full btn-outline flex items-center justify-center gap-2 text-lg py-3"
-              >
-                Proceed to Checkout
-              </Link>
-              {store && product && (
-                <WhatsAppChatButton
-                  config={{
-                    enabled: Boolean(store.whatsappNumber),
-                    number: store.whatsappNumber ?? "",
-                    position: "bottom-right",
-                    color: "#25D366",
-                    size: "medium",
-                    greetingText: "Hi! How can we help you today?",
-                    agentName: "",
-                    agentAvatar: "",
-                    businessHours: {
-                      enabled: false,
-                      timezone: "Africa/Lagos",
-                      awayMessage: "We're offline — leave a message and we'll reply soon.",
-                    },
-                    showOnPages: ["all"],
-                    messageTemplate:
-                      "Hi {store}, I'm interested in {product} ({price}). {url}",
-                    agents: [],
-                  }}
-                  store={store}
-                  page="product"
-                  productName={product.name}
-                  productPrice={product.price}
-                  productUrl={`/${slug}/products/${product.id}`}
-                  device="mobile"
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <>
+      <script
+        type="application/ld+json"
+        // JSON.stringify output with "<" escaped cannot break out of the tag.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+      />
+      <ProductDetail
+        store={frame.store}
+        config={frame.config}
+        theme={frame.theme}
+        categories={frame.categories}
+        product={data.product}
+        related={data.related}
+      />
+    </>
   );
 }

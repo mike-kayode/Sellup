@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { businesses, products, categories } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ShoppingCart, MapPin, Phone } from "@/components/icons/lucide-icons";
 import { WhatsAppIcon } from "@/components/icons/whatsapp";
@@ -18,12 +19,40 @@ interface BusinessPageProps {
   params: Promise<{
     slug: string;
   }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export const dynamic = "force-dynamic";
 
-export default async function BusinessPage({ params }: BusinessPageProps) {
+/** Per-store title, description, canonical and social preview. */
+export async function generateMetadata({ params }: BusinessPageProps): Promise<Metadata> {
   const { slug } = await params;
+  const [store] = await db
+    .select({
+      storeName: businesses.storeName,
+      description: businesses.description,
+      logo: businesses.logo,
+      bannerImage: businesses.bannerImage,
+      isPublished: businesses.isPublished,
+    })
+    .from(businesses)
+    .where(eq(businesses.storeSlug, slug))
+    .limit(1);
+  if (!store || !store.isPublished) return { title: "Store not found", robots: { index: false } };
+  const description = (store.description || `Shop ${store.storeName} online.`).slice(0, 160);
+  const image = store.bannerImage || store.logo || undefined;
+  return {
+    title: store.storeName,
+    description,
+    alternates: { canonical: `/${slug}` },
+    openGraph: { title: store.storeName, description, type: "website", images: image ? [image] : undefined },
+  };
+}
+
+export default async function BusinessPage({ params, searchParams }: BusinessPageProps) {
+  const { slug } = await params;
+  const sp = (await searchParams) ?? {};
+  const firstParam = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
   // Fetch business
   const businessData = await db
@@ -114,13 +143,40 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
     });
     const derived = deriveThemeTokens(config.brand.color);
     const theme = derived.valid ? derived : deriveThemeTokens(null);
+    // Only public fields reach the browser (no costPrice, flagReason, ...).
+    const publicProducts = [...productsData]
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        price: String(p.price),
+        comparePrice: p.comparePrice ? String(p.comparePrice) : null,
+        description: p.description ? p.description.slice(0, 300) : null,
+        images: Array.isArray(p.images) ? p.images : [],
+        stock: p.stock,
+        isFeatured: p.isFeatured,
+        categoryId: p.categoryId,
+      }));
+    const publicStore = {
+      id: store.id,
+      storeName: store.storeName,
+      storeSlug: store.storeSlug,
+      logo: store.logo,
+      bannerImage: store.bannerImage,
+      whatsappNumber: store.whatsappNumber,
+    };
+    const publicCategories = [...categoriesData]
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((c) => ({ id: c.id, name: c.name }));
     return (
       <StorefrontV1
-        store={store}
-        products={productsData}
-        categories={categoriesData}
+        store={publicStore}
+        products={publicProducts}
+        categories={publicCategories}
         config={config}
         theme={theme}
+        initialQuery={firstParam(sp.q).slice(0, 100)}
+        initialCategory={firstParam(sp.category) || "all"}
       />
     );
   }
